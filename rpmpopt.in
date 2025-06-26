@@ -210,11 +210,14 @@ rpmbuild alias --nodebuginfo	--define 'debug_package %{nil}' \
 	--POPTdesc=$"do not generate debuginfo for this package"
 
 rpmsign alias --key-id  --define '_gpg_name !#:+' \
-	--POPTdesc=$"key id/name to sign with" \
-	--POPTargs=$"<id>"
+        --POPTdesc=$"key id/name to sign with" \
+        --POPTargs=$"<id>"
+rpmsign alias --gost-key --define '_gpg_gost_key !#:+' \
+        --POPTdesc=$"GOST key id/name to sign with" \
+        --POPTargs=$"<id>"
 rpmsign alias --digest-algo --define '_gpg_digest_algo !#:+' \
-	--POPTdesc=$"override default digest algorithm (eg sha1/sha256)" \
-	--POPTargs=$"<algorithm>"
+        --POPTdesc=$"override default digest algorithm (eg sha1/sha256)" \
+        --POPTargs=$"<algorithm>"
 
 rpmspec	alias --conflicts	--qf \
   "[%|VERBOSE?{%{CONFLICTFLAGS:deptype}: }:{}|%{CONFLICTNEVRS}\n]" \
