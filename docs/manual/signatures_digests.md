@@ -28,3 +28,5 @@ contents:
 * c = compressed content
 * (*) = Configurable, defaults to SHA256
 * (**) = Configurable, defaults to SHA256 in rpm >= 4.14, MD5 in older
+* 
+RPM can also sign individual file digests using the GOST R 34.11-2012 digest (algorithm id `RPM_HASH_GOST3411_2012_256`) and GOST R 34.10-2012 keys. Support requires libgcrypt with GOST algorithms enabled.
