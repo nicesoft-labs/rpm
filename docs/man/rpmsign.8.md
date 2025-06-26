@@ -25,7 +25,7 @@ SIGNING PACKAGES:
 rpmsign-options
 ---------------
 
-\[**\--rpmv3**\] \[**\--fskpath ***KEY*\] \[**\--signfiles**\]
+\[**\--rpmv3**\] \[**\--gostkey ***KEY*\] \[**\--fskpath ***KEY*\] \[**\--signfiles**\]
 
 DESCRIPTION
 ===========
@@ -58,6 +58,11 @@ SIGN OPTIONS
     detect the need for V3 signatures, but this option can be used to
     force their creation if the packages must be fully signature
     verifiable with rpm \< 4.14 or other interoperability reasons.
+
+**--gostkey ***KEY*
+
+:   Use GOST signing key *KEY* for package signing.
+
 
 **\--fskpath ***KEY*
 
@@ -110,6 +115,11 @@ You will also need to configure the **rpm** macros
 
 :   The name of the \"user\" whose key you wish to use to sign your
     packages.
+
+**%_gpg_gost_key**
+
+:   GOST signing key to use for package signing.
+
 
 For example, to be able to use GPG to sign packages as the user *\"John
 Doe \<jdoe\@foo.com\>\"* from the key rings located in */etc/rpm/.gpg*
