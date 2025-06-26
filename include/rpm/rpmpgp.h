@@ -172,7 +172,8 @@ typedef enum pgpPubkeyAlgo_e {
     PGPPUBKEYALGO_ECDSA		= 19,	/*!< ECDSA */
     PGPPUBKEYALGO_ELGAMAL	= 20,	/*!< Elgamal */
     PGPPUBKEYALGO_DH		= 21,	/*!< Diffie-Hellman (X9.42) */
-    PGPPUBKEYALGO_EDDSA		= 22	/*!< EdDSA */
+    PGPPUBKEYALGO_EDDSA		= 22,	/*!< EdDSA */
+    PGPPUBKEYALGO_GOST3410_2012_256 = 23,   /!* GOST R 34.10-2012 256-bit */
 } pgpPubkeyAlgo;
 
 /** \ingroup rpmpgp
