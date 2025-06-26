@@ -45,7 +45,9 @@ size_t rpmDigestLength(int hashalgo)
     case RPM_HASH_SHA384:
 	return 48;
     case RPM_HASH_SHA512:
-	return 64;
+        return 64;
+    case RPM_HASH_GOST3411_2012_256:
+        return 32;
     default:
 	return 0;
     }
@@ -65,7 +67,9 @@ static int hashalgo2gcryalgo(int hashalgo)
     case RPM_HASH_SHA384:
 	return GCRY_MD_SHA384;
     case RPM_HASH_SHA512:
-	return GCRY_MD_SHA512;
+        return GCRY_MD_SHA512;
+    case RPM_HASH_GOST3411_2012_256:
+        return GCRY_MD_GOST12_256;
     default:
 	return 0;
     }
