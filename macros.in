@@ -620,6 +620,7 @@ Supplements:   (%{name} = %{version}-%{release} and langpacks-%{1})\
 #
 %__gpg_sign_cmd			%{shescape:%{__gpg}} \
 	gpg --no-verbose --no-armor --no-secmem-warning \
+ 	%{?_gpg_gost_key:--digest-algo=gost12-256 -u %{shescape:%{_gpg_gost_key}}} \
 	%{?_gpg_digest_algo:--digest-algo=%{_gpg_digest_algo}} \
 	%{?_gpg_sign_cmd_extra_args} \
 	%{?_gpg_name:-u %{shescape:%{_gpg_name}}} \
