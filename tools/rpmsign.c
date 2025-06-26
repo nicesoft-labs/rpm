@@ -27,6 +27,7 @@ static char * fileSigningKey = NULL;
 static char * fileSigningCert = NULL;
 static char * verityAlgorithm = NULL;
 #endif
+static char * gostSigningKey = NULL;
 
 static struct rpmSignArgs sargs = {NULL, 0, 0};
 
@@ -36,7 +37,7 @@ static struct poptOption signOptsTable[] = {
     { "resign", '\0', (POPT_ARG_VAL|POPT_ARGFLAG_OR), &mode, MODE_RESIGN,
 	N_("sign package(s) (identical to --addsign)"), NULL },
     { "delsign", '\0', (POPT_ARG_VAL|POPT_ARGFLAG_OR), &mode, MODE_DELSIGN,
-	N_("delete package signatures"), NULL },
+        N_("delete package signatures"), NULL },
 #if defined(WITH_IMAEVM) || defined(WITH_FSVERITY)
     { "delfilesign", '\0', (POPT_ARG_VAL|POPT_ARGFLAG_OR), &mode,
       MODE_DELFILESIGN,	N_("delete IMA and fsverity file signatures"), NULL },
@@ -62,11 +63,14 @@ static struct poptOption signOptsTable[] = {
 #endif
 #if defined(WITH_IMAEVM) || defined(WITH_FSVERITY)
     { "fskpath", '\0', POPT_ARG_STRING, &fileSigningKey, 0,
-	N_("use file signing key <key>"),
-	N_("<key>") },
+        N_("use file signing key <key>"),
+        N_("<key>") },
     { "fskpass", '\0', POPT_ARG_NONE, &fskpass, 0,
 	N_("prompt for file signing key password"), NULL},
 #endif
+    { "gostkey", '\0', POPT_ARG_STRING, &gostSigningKey, 0,
+        N_("use GOST signing key <key>"),
+        N_("<key>") },
     POPT_TABLEEND
 };
 
@@ -127,10 +131,13 @@ static int doSign(poptContext optCon, struct rpmSignArgs *sargs)
 {
     int rc = EXIT_FAILURE;
     char * name = rpmExpand("%{?_gpg_name}", NULL);
+    if (gostSigningKey) {
+        rpmPushMacro(NULL, "_gpg_gost_key", NULL, gostSigningKey, RMIL_GLOBAL);
+    }
 
-    if (rstreq(name, "")) {
-	fprintf(stderr, _("You must set \"%%_gpg_name\" in your macro file\n"));
-	goto exit;
+    if (rstreq(name, "") && !gostSigningKey) {
+        fprintf(stderr, _("You must set \"%%_gpg_name\" in your macro file or use --gostkey\n"));
+        goto exit;
     }
 
 #if defined(WITH_IMAEVM) || defined(WITH_FSVERITY)
