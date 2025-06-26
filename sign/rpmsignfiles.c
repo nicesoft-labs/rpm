@@ -30,6 +30,7 @@ static const char *hash_algo_name[] = {
     [RPM_HASH_SHA384]       = "sha384",
     [RPM_HASH_SHA512]       = "sha512",
     [RPM_HASH_SHA224]       = "sha224",
+    [RPM_HASH_GOST3411_2012_256] = "gost12-256",
 };
 
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
