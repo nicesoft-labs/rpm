@@ -39,6 +39,7 @@ static struct pgpValTbl_s const pgpPubkeyTbl[] = {
     { PGPPUBKEYALGO_ELGAMAL,	"Elgamal" },
     { PGPPUBKEYALGO_DH,		"Diffie-Hellman (X9.42)" },
     { PGPPUBKEYALGO_EDDSA,	"EdDSA" },
+    { PGPPUBKEYALGO_GOST3410_2012_256, "GOST3410-2012(256)" },
     { -1,			"Unknown public key algorithm" },
 };
 
