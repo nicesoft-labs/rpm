@@ -1,24 +1,11 @@
-# Instructions for building RPM
+# Instructions for building 
 
-Этот репозиторий содержит исходный код менеджера пакетов RPM. Для сборки RPM из исходников на системе Ubuntu/Debian выполните следующие действия.
-
-## Установка зависимостей
-
-Необходимо установить следующие пакеты:
-
-```bash
 sudo apt-get update
 sudo apt-get install -y build-essential cmake pkg-config bison flex libpopt-dev \
     libselinux1-dev libsqlite3-dev libarchive-dev libcap-dev libacl1-dev \
     libaudit-dev libbz2-dev liblzma-dev libzstd-dev libssl-dev \
     libmagic-dev zlib1g-dev python3-dev liblua5.4-dev debugedit
-```
 
-## Сборка
-
-Создайте отдельную директорию для сборки, выполните `cmake` с требуемыми флагами и соберите проект:
-
-```bash
 mkdir build && cd build
 cmake .. \
   -DENABLE_BDB_RO=ON \
@@ -41,9 +28,3 @@ cmake .. \
   -DWITH_ZSTD=ON \
   -DENABLE_TESTSUITE=OFF
 make -j$(nproc)
-```
-
-После успешной компиляции можно установить собранные бинарники:
-
-```bash
-sudo make install
