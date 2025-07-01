@@ -26,6 +26,13 @@ pgpDigAlg pgpSignatureNew(int algo, int is_gost);
 
 pgpDigAlg pgpDigAlgFree(pgpDigAlg alg);
 
+/* digest_libgcrypt.c */
+int pgpVerifySigGOST2001(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
+                         uint8_t *hash, size_t hashlen, int hash_algo);
+int pgpVerifySigECDSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
+                      uint8_t *hash, size_t hashlen, int hash_algo);
+
+
 /** \ingroup rpmpgp
  * Return no. of bits in a multiprecision integer.
  * @param p		pointer to multiprecision integer
