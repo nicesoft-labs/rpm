@@ -73,8 +73,16 @@ static const EVP_MD *getEVPMD(int hashalgo)
         return EVP_sha224();
 	    
 #ifdef NID_id_GostR3411_2012_256
-    case RPM_HASH_GOST3411_2012_256:
+    case RPM_HASH_GOSTR3411_2012_256:
         return EVP_get_digestbynid(NID_id_GostR3411_2012_256);
+#endif
+#ifdef NID_id_GostR3411_2012_512
+    case RPM_HASH_GOSTR3411_2012_512:
+        return EVP_get_digestbynid(NID_id_GostR3411_2012_512);
+#endif
+#ifdef NID_id_GostR3411_94
+    case RPM_HASH_GOSTR3411_94:
+        return EVP_get_digestbynid(NID_id_GostR3411_94);
 #endif
 
     default:
