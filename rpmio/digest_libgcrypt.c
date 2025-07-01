@@ -5,6 +5,7 @@
 #include <rpm/rpmcrypto.h>
 #include "rpmpgp_internal.h"
 #include "rpmio_internal.h"
+#include <rpm/rpmlog.h>
 #include "debug.h"
 
 /**
@@ -379,8 +380,19 @@ static int pgpVerifySigGOST2001(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
     gcry_sexp_build(&sexp_pkey, NULL,
                     "(public-key (gost (p %M) (q %M) (y %M)))",
                     key->p, key->q, key->y);
+    if (sexp_sig && sexp_data && sexp_pkey) {
+        char buf[1024];
+        gcry_sexp_sprint(sexp_sig, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
+        rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST2001: sig %s\n", buf);
+        gcry_sexp_sprint(sexp_data, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
+        rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST2001: data %s\n", buf);
+        gcry_sexp_sprint(sexp_pkey, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
+        rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST2001: pkey %s\n", buf);
+    }
     if (sexp_sig && sexp_data && sexp_pkey)
         rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
+    rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST2001: rc=%d\n", rc);
+
     gcry_sexp_release(sexp_sig);
     gcry_sexp_release(sexp_data);
     gcry_sexp_release(sexp_pkey);
@@ -626,6 +638,10 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve)
         ka->mpis = 4;
         break;
     case PGPPUBKEYALGO_ECDSA:
+        ka->setmpi = pgpSetKeyMpiDSA;
+        ka->free = pgpFreeKeyDSA;
+        ka->mpis = 4;
+        break;
     case PGPPUBKEYALGO_GOST3410_2001:
         ka->setmpi = pgpSetKeyMpiEDDSA;
         ka->free = pgpFreeKeyEDDSA;
@@ -655,7 +671,8 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve)
     }
 
     ka->verify = pgpVerifyNULL; /* keys can't be verified */
-
+    rpmlog(RPMLOG_DEBUG, "pgpPubkeyNew: algo=%d mpis=%d setmpi=%p free=%p\n",
+           algo, ka->mpis, ka->setmpi, ka->free);
     return ka;
 }
 
@@ -689,7 +706,7 @@ pgpDigAlg pgpSignatureNew(int algo)
     case PGPPUBKEYALGO_ECDSA:
         sa->setmpi = pgpSetSigMpiDSA;
         sa->free = pgpFreeSigDSA;
-        sa->verify = pgpVerifySigECDSA;
+        sa->verify = pgpVerifySigGOST2001;
         sa->mpis = 2;
         break;
     case PGPPUBKEYALGO_GOST3410_2012_256:
@@ -710,5 +727,7 @@ pgpDigAlg pgpSignatureNew(int algo)
         sa->mpis = -1;
         break;
     }
+    rpmlog(RPMLOG_DEBUG, "pgpSignatureNew: algo=%d verify=%p\n", algo, sa->verify);
+
     return sa;
 }
