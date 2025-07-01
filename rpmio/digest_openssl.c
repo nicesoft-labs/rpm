@@ -6,6 +6,7 @@
 #include <rpm/rpmcrypto.h>
 
 #include "rpmpgp_internal.h"
+#include <rpm/rpmlog.h>
 #include <openssl/err.h>
 
 
@@ -822,10 +823,12 @@ static int pgpVerifyNULL(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
 }
 
 /****************************** PGP **************************************/
-pgpDigAlg pgpPubkeyNew(int algo, int curve)
+pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
 {
     pgpDigAlg ka = xcalloc(1, sizeof(*ka));;
-
+    ka->curve = curve;
+    ka->is_gost = oid && strcmp(oid, "1.2.643.2.2.35.1") == 0;
+	
     switch (algo) {
     case PGPPUBKEYALGO_RSA:
         ka->setmpi = pgpSetKeyMpiRSA;
@@ -857,13 +860,18 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve)
     }
 
     ka->verify = pgpVerifyNULL; /* keys can't be verified */
+    rpmlog(RPMLOG_DEBUG,
+           "pgpPubkeyNew: algo=%d curve_oid=%s is_gost=%d mpis=%d setmpi=%p free=%p\n",
+           algo, oid ? oid : "", ka->is_gost,
+           ka->mpis, ka->setmpi, ka->free);
 
     return ka;
 }
 
-pgpDigAlg pgpSignatureNew(int algo)
+pgpDigAlg pgpSignatureNew(int algo, int is_gost)
 {
     pgpDigAlg sa = xcalloc(1, sizeof(*sa));
+    sa->is_gost = is_gost;
 
     switch (algo) {
     case PGPPUBKEYALGO_RSA:
@@ -904,5 +912,7 @@ pgpDigAlg pgpSignatureNew(int algo)
         sa->mpis = -1;
         break;
     }
+    rpmlog(RPMLOG_DEBUG, "pgpSignatureNew: algo=%d is_gost=%d verify=%p\n",
+           algo, is_gost, sa->verify);
     return sa;
 }
