@@ -654,9 +654,15 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
         ka->mpis = 4;
         break;
     case PGPPUBKEYALGO_ECDSA:
+    if (ka->is_gost) {
+        ka->setmpi = pgpSetKeyMpiDSA; // или отдельный если нужен
+        ka->free = pgpFreeKeyDSA;
+        ka->mpis = 1;
+    } else {
         ka->setmpi = pgpSetKeyMpiDSA;
         ka->free = pgpFreeKeyDSA;
         ka->mpis = 4;
+    }
 	ka->curve = curve;
         break;
     case PGPPUBKEYALGO_GOST3410_2001:
