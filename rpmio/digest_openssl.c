@@ -3,6 +3,7 @@
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 #include <openssl/dsa.h>
+#include <openssl/obj_mac.h>
 #include <rpm/rpmcrypto.h>
 
 #include "rpmpgp_internal.h"
@@ -808,6 +809,101 @@ done:
 
 #endif
 
+/****************************** GOST ***************************************/
+
+struct pgpDigKeyGOST_s {
+    EVP_PKEY *evp_pkey; /* Fully constructed key */
+    unsigned char *q;   /* raw public key */
+    int qlen;
+};
+
+static int constructGOSTSigningKey(struct pgpDigKeyGOST_s *key)
+{
+    if (key->evp_pkey)
+        return 1; /* reuse */
+
+    key->evp_pkey = EVP_PKEY_new_raw_public_key_ex(NULL, "gost2001", NULL,
+                                                   key->q, key->qlen);
+    if (!key->evp_pkey) {
+        rpmlog(RPMLOG_DEBUG, "constructGOSTSigningKey: EVP_PKEY_new_raw_public_key_ex failed\n");
+        return 0;
+    }
+    return 1;
+}
+
+static int pgpSetKeyMpiGOST(pgpDigAlg pgpkey, int num, const uint8_t *p)
+{
+    size_t mlen = pgpMpiLen(p) - 2;
+    struct pgpDigKeyGOST_s *key = pgpkey->data;
+    int rc = 1;
+
+    if (!key)
+        key = pgpkey->data = xcalloc(1, sizeof(*key));
+    if (num == 0 && !key->q && mlen > 1 && p[2] == 0x40) {
+        key->qlen = mlen - 1;
+        key->q = xmalloc(key->qlen);
+        memcpy(key->q, p + 3, key->qlen);
+        rc = 0;
+    }
+    rpmlog(RPMLOG_DEBUG, "pgpSetKeyMpiGOST: num=%d mlen=%zu rc=%d\n", num, mlen, rc);
+    return rc;
+}
+
+static void pgpFreeKeyGOST(pgpDigAlg pgpkey)
+{
+    struct pgpDigKeyGOST_s *key = pgpkey->data;
+    if (key) {
+        free(key->q);
+        if (key->evp_pkey)
+            EVP_PKEY_free(key->evp_pkey);
+        free(key);
+    }
+}
+
+static int pgpSetSigMpiGOST(pgpDigAlg pgpsig, int num, const uint8_t *p)
+{
+    return pgpSetSigMpiDSA(pgpsig, num, p);
+}
+
+static void pgpFreeSigGOST(pgpDigAlg pgpsig)
+{
+    pgpFreeSigDSA(pgpsig);
+}
+
+static int pgpVerifySigGOST(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
+                           uint8_t *hash, size_t hashlen, int hash_algo)
+{
+    int rc = 1;
+    struct pgpDigSigDSA_s *sig = pgpsig->data;
+    struct pgpDigKeyGOST_s *key = pgpkey->data;
+    EVP_PKEY_CTX *ctx = NULL;
+    unsigned char sigbuf[64];
+
+    if (!constructGOSTSigningKey(key))
+        goto done;
+
+    ctx = EVP_PKEY_CTX_new(key->evp_pkey, NULL);
+    if (!ctx)
+        goto done;
+    if (EVP_PKEY_verify_init(ctx) <= 0)
+        goto done;
+
+    memset(sigbuf, 0, sizeof(sigbuf));
+    if (BN_bn2binpad(sig->r, sigbuf, 32) < 0 ||
+        BN_bn2binpad(sig->s, sigbuf + 32, 32) < 0)
+        goto done;
+
+    if (EVP_PKEY_verify(ctx, sigbuf, sizeof(sigbuf), hash, hashlen) == 1)
+        rc = 0;
+
+done:
+    if (ctx)
+        EVP_PKEY_CTX_free(ctx);
+    rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST: rc=%d\n", rc);
+    return rc;
+}
+
+
 
 /****************************** NULL **************************************/
 
@@ -839,6 +935,17 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
         ka->setmpi = pgpSetKeyMpiDSA;
         ka->free = pgpFreeKeyDSA;
         ka->mpis = 4;
+        break;
+    case PGPPUBKEYALGO_ECDSA:
+        if (ka->is_gost) {
+            ka->setmpi = pgpSetKeyMpiGOST;
+            ka->free = pgpFreeKeyGOST;
+            ka->mpis = 1;
+        } else {
+            ka->setmpi = pgpSetMpiNULL;
+            ka->mpis = -1;
+        }
+        ka->curve = curve;
         break;
 #ifdef EVP_PKEY_ED25519
     case PGPPUBKEYALGO_EDDSA:
@@ -885,6 +992,18 @@ pgpDigAlg pgpSignatureNew(int algo, int is_gost)
         sa->free = pgpFreeSigDSA;
         sa->verify = pgpVerifySigDSA;
         sa->mpis = 2;
+        break;
+    case PGPPUBKEYALGO_ECDSA:
+        if (is_gost) {
+            sa->setmpi = pgpSetSigMpiGOST;
+            sa->free = pgpFreeSigGOST;
+            sa->verify = pgpVerifySigGOST;
+            sa->mpis = 2;
+        } else {
+            sa->setmpi = pgpSetMpiNULL;
+            sa->verify = pgpVerifyNULL;
+            sa->mpis = -1;
+        }
         break;
     case PGPPUBKEYALGO_GOST3410_2001:
         sa->setmpi = pgpSetSigMpiDSA;
