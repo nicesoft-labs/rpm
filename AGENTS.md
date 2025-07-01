@@ -28,3 +28,55 @@ cmake .. \
   -DWITH_ZSTD=ON \
   -DENABLE_TESTSUITE=OFF
 make -j$(nproc)
+
+echo "📁 Создаю каталоги для rpmbuild..."
+mkdir -p ~/rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
+
+echo "✏️ Записываю ~/.rpmmacros..."
+echo '%_topdir %(echo $HOME)/rpmbuild' > ~/.rpmmacros
+
+echo "📝 Пишу hello.spec..."
+cat > ~/rpmbuild/SPECS/hello.spec <<EOF
+Name:           hello
+Version:        1.0
+Release:        1%{?dist}
+Summary:        Simple hello world package
+
+License:        MIT
+URL:            https://example.com
+Source0:        hello.sh
+
+BuildArch:      noarch
+
+%description
+A simple package that prints Hello World.
+
+%prep
+
+%build
+
+%install
+mkdir -p %{buildroot}/usr/bin
+install -m 0755 %{SOURCE0} %{buildroot}/usr/bin/hello
+
+%files
+/usr/bin/hello
+
+%changelog
+* Tue Jul 01 2025 You <you@example.com> - 1.0-1
+- Initial package
+EOF
+
+echo "📜 Создаю hello.sh..."
+cat > ~/rpmbuild/SOURCES/hello.sh <<EOF
+#!/bin/bash
+echo "Hello, world!"
+EOF
+
+chmod +x ~/rpmbuild/SOURCES/hello.sh
+
+echo "⚙️ Стартую rpmbuild..."
+rpmbuild -ba ~/rpmbuild/SPECS/hello.spec
+
+echo "✅ Готово!"
+echo "Проверяй: ~/rpmbuild/RPMS/noarch/"
