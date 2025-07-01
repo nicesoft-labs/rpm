@@ -1,9 +1,4 @@
-First, clone the `gost-support` branch from our repository:
-git clone --branch feature/gost-support https://github.com/nicesoft-labs/gnupg.git
-
-then install 
-
-sudo apt-get update
+сначала установи нужные пакеты: 
 sudo apt-get install -y build-essential cmake pkg-config bison flex libpopt-dev \
     libselinux1-dev libsqlite3-dev libarchive-dev libcap-dev libacl1-dev \
     libaudit-dev libbz2-dev liblzma-dev libzstd-dev libssl-dev \
@@ -15,14 +10,6 @@ sudo apt-get install -y build-essential cmake pkg-config bison flex libpopt-dev 
   libusb-1.0-0-dev libgpg-error-dev libassuan-dev libgcrypt20-dev libksba-dev \
   libnpth0-dev
 
-  then 
-  cd gnupg
-  ./autogen.sh --force
-  ./configure --enable-maintainer-mode --prefix=/usr/local --enable-large-secmem --disable-doc
-make -j$(nproc)
-sudo make install
-then clone rpm repository and build rpm
-then
 mkdir build2 && cd build2
 cmake .. \
   -DENABLE_BDB_RO=ON \
@@ -46,54 +33,21 @@ cmake .. \
   -DENABLE_TESTSUITE=OFF
 make -j$(nproc)
 
-echo "📁 Создаю каталоги для rpmbuild..."
-mkdir -p ~/rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
+затем запиши в файл /root/stan01-key.asc этот ключ:
 
-echo "✏️ Записываю ~/.rpmmacros..."
-echo '%_topdir %(echo $HOME)/rpmbuild' > ~/.rpmmacros
+-----BEGIN PGP PUBLIC KEY BLOCK-----
 
-echo "📝 Пишу hello.spec..."
-cat > ~/rpmbuild/SPECS/hello.spec <<EOF
-Name:           hello
-Version:        1.0
-Release:        1%{?dist}
-Summary:        Simple hello world package
+mFEEaGPbbBMHKoUDAgIjAQIDBNB9TKnmWBvFzIEoSw3XGSznQbEhd0DZOEXyTkr6
+kRCBARvO4MhBpveoj46e+SLYquv9LIOlTQa+PAPV3ls0t3y0FnN0YW4wMSA8c3Rh
+bjAxQHN0YW4wMT6IkwQTE6YAOxYhBKGIhyg81aOTOo4HXW2o0V0LJee/BQJoY9ts
+AhsDBQsJCAcCAiICBhUKCQgLAgQWAgMBAh4HAheAAAoJEG2o0V0LJee/90cBAPQv
+lvG8eGt0JuOY4JCzNS6TSZyub74BItnN7VReMDr1AP4j1w/0B+unbORjjS+zWnB9
+Ub/XleYEd8Z4CiULze2tuLhfBGhj22wSByqFAwICIwECAwTWKSZS2aeISR4D8MV0
+qwwZklJnec8u9eiytXjgd5z7hnE42QIlEvy6cTAwEpldFLZi2WWkgMmDyIR7EQoI
+5SbZDQIBCKYBAaoBAHIBqgGIeAQYE6YAIBYhBKGIhyg81aOTOo4HXW2o0V0LJee/
+BQJoY9tsAhsMAAoJEG2o0V0LJee/scoA/1Yw18xxA3LOD4N3BnxqgXVCwdpCJPmn
+9bX3VfgjVVaLAQCW/kut8aA3ubFN4/rhsTK/qdQttHq0cGMxIM5mPPGo+Q==
+=M+Qx
+-----END PGP PUBLIC KEY BLOCK-----
 
-License:        MIT
-URL:            https://example.com
-Source0:        hello.sh
-
-BuildArch:      noarch
-
-%description
-A simple package that prints Hello World.
-
-%prep
-
-%build
-
-%install
-mkdir -p %{buildroot}/usr/bin
-install -m 0755 %{SOURCE0} %{buildroot}/usr/bin/hello
-
-%files
-/usr/bin/hello
-
-%changelog
-* Tue Jul 01 2025 You <you@example.com> - 1.0-1
-- Initial package
-EOF
-
-echo "📜 Создаю hello.sh..."
-cat > ~/rpmbuild/SOURCES/hello.sh <<EOF
-#!/bin/bash
-echo "Hello, world!"
-EOF
-
-chmod +x ~/rpmbuild/SOURCES/hello.sh
-
-echo "⚙️ Стартую rpmbuild..."
-rpmbuild -ba ~/rpmbuild/SPECS/hello.spec
-
-echo "✅ Готово!"
-echo "Проверяй: ~/rpmbuild/RPMS/noarch/"
+и попытайся его импортировать. rpm -vvvvv --import /root/stan01-key.asc
