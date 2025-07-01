@@ -86,7 +86,6 @@ static int hashalgo2gcryalgo(int hashalgo)
 #else
         return GCRY_MD_STRIBOG256;
 #endif
-        return GCRY_MD_GOSTR3411_12_256;
     case RPM_HASH_GOSTR3411_2012_256:
         return GCRY_MD_STRIBOG256;
     case RPM_HASH_GOSTR3411_2012_512:
