@@ -1,11 +1,28 @@
-# Instructions for building 
+First, clone the `gost-support` branch from our repository:
+git clone --branch feature/gost-support https://github.com/nicesoft-labs/gnupg.git
+
+then install 
 
 sudo apt-get update
 sudo apt-get install -y build-essential cmake pkg-config bison flex libpopt-dev \
     libselinux1-dev libsqlite3-dev libarchive-dev libcap-dev libacl1-dev \
     libaudit-dev libbz2-dev liblzma-dev libzstd-dev libssl-dev \
-    libmagic-dev zlib1g-dev python3-dev liblua5.4-dev debugedit
+    libmagic-dev zlib1g-dev python3-dev liblua5.4-dev debugedit \
+    rsync build-essential git gpg automake autoconf gettext libtool pkgconf \
+  autopoint python3-all python3-all-dev texinfo transfig fig2dev imagemagick \
+  file ghostscript swig doxygen graphviz libz-dev libbz2-dev libldap2-dev \
+  libsqlite3-dev libgnutls28-dev libcurl4-gnutls-dev libreadline-dev librsvg2-bin \
+  libusb-1.0-0-dev libgpg-error-dev libassuan-dev libgcrypt20-dev libksba-dev \
+  libnpth0-dev
 
+  then 
+  cd gnupg
+  ./autogen.sh --force
+  ./configure --enable-maintainer-mode --prefix=/usr/local --enable-large-secmem --disable-doc
+make -j$(nproc)
+sudo make install
+then clone rpm repository and build rpm
+then
 mkdir build2 && cd build2
 cmake .. \
   -DENABLE_BDB_RO=ON \
