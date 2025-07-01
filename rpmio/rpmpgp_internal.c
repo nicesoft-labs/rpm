@@ -1226,16 +1226,11 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
 	    goto exit;
         pgpDigAlg sa = sig->alg;
         pgpDigAlg ka = key->alg;
-        if (sa && sig->pubkey_algo == key->pubkey_algo) {
-            verifyfunc verify = sa->verify;
-            if (sig->pubkey_algo == PGPPUBKEYALGO_ECDSA) {
-                verify = ka->is_gost ? pgpVerifySigGOST2001 : pgpVerifySigECDSA;
-            }
-		rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: using %s verifier\n",
-                   verify == pgpVerifySigGOST2001 ? "GOST2001" :
-                   (verify == pgpVerifySigECDSA ? "ECDSA" : pgpValStr(pgpPubkeyTbl, sig->pubkey_algo)));
-            int vrc = verify(ka, sa, hash, hashlen, sig->hash_algo);
-            rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: verify returned %d\n", vrc);
+        if (sa && sa->verify && sig->pubkey_algo == key->pubkey_algo) {
+            rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: using %s verifier\n",
+                   pgpValStr(pgpPubkeyTbl, sig->pubkey_algo));
+            int vrc = sa->verify(ka, sa, hash, hashlen, sig->hash_algo);
+	rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: verify returned %d\n", vrc);
             if (vrc == 0) {
                 res = RPMRC_OK;
             }
