@@ -655,14 +655,15 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
         break;
     case PGPPUBKEYALGO_ECDSA:
         if (ka->is_gost) {
-            /* GOST keys are parsed as ECDSA with special curve OID */
-            ka->setmpi = pgpSetKeyMpiEDDSA;
-            ka->free = pgpFreeKeyEDDSA;
-            ka->mpis = 1;
-        } else {
+            /* GOST R 34.10-2001: парсится как ECDSA+OID, но по-факту DSA-механизм (p,q,g,y) */
             ka->setmpi = pgpSetKeyMpiDSA;
-            ka->free = pgpFreeKeyDSA;
-            ka->mpis = 4;
+            ka->free   = pgpFreeKeyDSA;
+            ka->mpis   = 4;
+        } else {
+            /* Стандартный ECDSA: один MPI — публичная точка */
+            ka->setmpi = pgpSetKeyMpiEDDSA;
+            ka->free   = pgpFreeKeyEDDSA;
+            ka->mpis   = 1;
         }
         ka->curve = curve;
         break;
