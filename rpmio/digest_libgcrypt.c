@@ -572,27 +572,16 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve)
         ka->free = pgpFreeKeyDSA;
         ka->mpis = 4;
         break;
+    case PGPPUBKEYALGO_ECDSA:
     case PGPPUBKEYALGO_GOST3410_2001:
         ka->setmpi = pgpSetKeyMpiDSA;
         ka->free = pgpFreeKeyDSA;
-        ka->mpis = 3;
+        ka->mpis = 3;    /* p, q, y */
         break;
     case PGPPUBKEYALGO_GOST3410_2012_256:
         ka->setmpi = pgpSetKeyMpiEDDSA;
         ka->free = pgpFreeKeyEDDSA;
         ka->mpis = 1;
-        break;
-    case PGPPUBKEYALGO_GOST3410_2001:
-        sa->setmpi = pgpSetSigMpiDSA;
-        sa->free = pgpFreeSigDSA;
-        sa->verify = pgpVerifySigGOST2001;
-        sa->mpis = 2;
-        break;
-    case PGPPUBKEYALGO_GOST3410_2012_256:
-        sa->setmpi = pgpSetSigMpiDSA;
-        sa->free = pgpFreeSigDSA;
-        sa->verify = pgpVerifySigGOST2012;
-        sa->mpis = 2;
         break;
     case PGPPUBKEYALGO_EDDSA:
 	if (!pgpSupportedCurve(curve)) {
@@ -635,6 +624,13 @@ pgpDigAlg pgpSignatureNew(int algo)
         sa->setmpi = pgpSetSigMpiDSA;
         sa->free = pgpFreeSigDSA;
         sa->verify = pgpVerifySigDSA;
+        sa->mpis = 2;
+        break;
+    case PGPPUBKEYALGO_ECDSA:
+    case PGPPUBKEYALGO_GOST3410_2001:
+        sa->setmpi = pgpSetSigMpiDSA;
+        sa->free = pgpFreeSigDSA;
+        sa->verify = pgpVerifySigGOST2001;
         sa->mpis = 2;
         break;
     case PGPPUBKEYALGO_EDDSA:
