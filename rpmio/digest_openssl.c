@@ -806,6 +806,18 @@ pgpDigAlg pgpSignatureNew(int algo)
         sa->verify = pgpVerifySigDSA;
         sa->mpis = 2;
         break;
+    case PGPPUBKEYALGO_GOST3410_2001:
+        sa->setmpi = pgpSetSigMpiDSA;
+        sa->free = pgpFreeSigDSA;
+        sa->verify = pgpVerifySigDSA;
+        sa->mpis = 2;
+        break;
+    case PGPPUBKEYALGO_GOST3410_2012_256:
+        sa->setmpi = pgpSetSigMpiDSA;
+        sa->free = pgpFreeSigDSA;
+        sa->verify = pgpVerifySigDSA;
+        sa->mpis = 2;
+        break;
 #ifdef EVP_PKEY_ED25519
     case PGPPUBKEYALGO_EDDSA:
         sa->setmpi = pgpSetSigMpiEDDSA;
