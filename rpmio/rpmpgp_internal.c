@@ -665,6 +665,7 @@ static int getPubkeyFingerprint(const uint8_t *h, size_t hlen,
     const uint8_t *se;
     const uint8_t *pend = h + hlen;
     uint8_t version = 0;
+    rpmlog(RPMLOG_DEBUG, "getPubkeyFingerprint: start hlen=%zu\n", hlen);
 
     if (pgpVersion(h, hlen, &version))
 	return rc;
@@ -674,6 +675,7 @@ static int getPubkeyFingerprint(const uint8_t *h, size_t hlen,
     case 4:
       {	pgpPktKeyV4 v = (pgpPktKeyV4) (h);
 	int mpis = -1;
+        rpmlog(RPMLOG_DEBUG, "getPubkeyFingerprint: version=4 pubkey_algo=%s(%u)\n", pgpValStr(pgpPubkeyTbl, v->pubkey_algo), v->pubkey_algo);
 
 	/* Packet must be strictly larger than v to have room for the
 	 * required MPIs and (for EdDSA) the curve ID */
@@ -712,6 +714,7 @@ static int getPubkeyFingerprint(const uint8_t *h, size_t hlen,
 	default:
 	    return rc;
 	}
+        rpmlog(RPMLOG_DEBUG, "getPubkeyFingerprint: mpis=%d\n", mpis);
 
 	/* Does the size and number of MPI's match our expectations? */
 	if (processMpis(mpis, NULL, se, pend) == 0) {
@@ -728,6 +731,9 @@ static int getPubkeyFingerprint(const uint8_t *h, size_t hlen,
 		rc = 0;
 		*fp = d;
 		*fplen = dlen;
+                char *hex = rpmhex(d, dlen);
+                rpmlog(RPMLOG_DEBUG, "getPubkeyFingerprint: fingerprint %s len=%zu\n", hex, dlen);
+                free(hex);
 	    } else {
 		free(d);
 	    }
@@ -736,6 +742,8 @@ static int getPubkeyFingerprint(const uint8_t *h, size_t hlen,
       }	break;
     default:
 	rpmlog(RPMLOG_WARNING, _("Unsupported version of key: V%d\n"), version);
+	rpmlog(RPMLOG_DEBUG, "getPubkeyFingerprint: rc=%d\n", rc);
+
     }
     return rc;
 }
@@ -1148,13 +1156,18 @@ int pgpPrtParamsSubkeys(const uint8_t *pkts, size_t pktlen,
 
 rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
 {
+    rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: start\n");
     DIGEST_CTX ctx = rpmDigestDup(hashctx);
     uint8_t *hash = NULL;
     size_t hashlen = 0;
     rpmRC res = RPMRC_FAIL; /* assume failure */
 
     if (sig == NULL || ctx == NULL)
-	goto exit;
+        goto exit;
+
+    rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: pubkey_algo=%s(%u) hash_algo=%s(%u)\n",
+           pgpValStr(pgpPubkeyTbl, sig->pubkey_algo), sig->pubkey_algo,
+           pgpValStr(pgpHashTbl, sig->hash_algo), sig->hash_algo);
 
     if (sig->tag != PGPTAG_SIGNATURE)
 	goto exit;
@@ -1187,20 +1200,26 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
     if (key && key->alg) {
 	if (!isKey(key))
 	    goto exit;
-	pgpDigAlg sa = sig->alg;
-	pgpDigAlg ka = key->alg;
-	if (sa && sa->verify && sig->pubkey_algo == key->pubkey_algo) {
-	    if (sa->verify(ka, sa, hash, hashlen, sig->hash_algo) == 0) {
-		res = RPMRC_OK;
-	    }
-	}
+        pgpDigAlg sa = sig->alg;
+        pgpDigAlg ka = key->alg;
+        if (sa && sa->verify && sig->pubkey_algo == key->pubkey_algo) {
+            rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: using %s verifier\n",
+                   pgpValStr(pgpPubkeyTbl, sig->pubkey_algo));
+            int vrc = sa->verify(ka, sa, hash, hashlen, sig->hash_algo);
+            rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: verify returned %d\n", vrc);
+            if (vrc == 0) {
+                res = RPMRC_OK;
+            }
+        }
     } else {
-	res = RPMRC_NOKEY;
+        res = RPMRC_NOKEY;
+        rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: no key provided\n");
     }
 
 exit:
     free(hash);
     rpmDigestFinal(ctx, NULL, NULL, 0);
+    rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: returning %d\n", res);
     return res;
 
 }
@@ -1403,6 +1422,28 @@ char * pgpArmorWrap(int atype, const unsigned char * s, size_t ns)
 
 rpmRC pgpPubKeyLint(const uint8_t *pkts, size_t pktslen, char **explanation)
 {
+    rpmlog(RPMLOG_DEBUG, "pgpPubKeyLint: start pktslen=%zu\n", pktslen);
+
     *explanation = NULL;
+
+    pgpDigParams digp = NULL;
+    if (pgpPrtParams(pkts, pktslen, 0, &digp) == 0 && digp) {
+        rpmlog(RPMLOG_DEBUG, "pgpPubKeyLint: pubkey_algo=%s(%u) hash_algo=%s(%u)\n",
+               pgpValStr(pgpPubkeyTbl, digp->pubkey_algo), digp->pubkey_algo,
+               pgpValStr(pgpHashTbl, digp->hash_algo), digp->hash_algo);
+        uint8_t *fp = NULL;
+        size_t fplen = 0;
+        int fprc = pgpPubkeyFingerprint(pkts, pktslen, &fp, &fplen);
+        rpmlog(RPMLOG_DEBUG, "pgpPubKeyLint: getPubkeyFingerprint rc=%d\n", fprc);
+        if (fprc == 0) {
+            char *hex = rpmhex(fp, fplen);
+            rpmlog(RPMLOG_DEBUG, "pgpPubKeyLint: fingerprint %s len=%zu\n", hex, fplen);
+            free(hex);
+        }
+        free(fp);
+    }
+    pgpDigParamsFree(digp);
+
+    rpmlog(RPMLOG_DEBUG, "pgpPubKeyLint: end\n");
     return RPMRC_OK;
 }
