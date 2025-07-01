@@ -667,10 +667,10 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
         ka->curve = curve;
         break;
     case PGPPUBKEYALGO_GOST3410_2001:
-        ka->setmpi = pgpSetKeyMpiEDDSA;
-        ka->free = pgpFreeKeyEDDSA;
-        ka->mpis = 1;
-        ka->curve = curve;
+        /* GOST R 34.10-2001 обрабатывается через DSA-механизм (4 MPI: p, q, g, y) */
+        ka->setmpi = pgpSetKeyMpiDSA;
+        ka->free   = pgpFreeKeyDSA;
+        ka->mpis   = 4;
         break;
     case PGPPUBKEYALGO_GOST3410_2012_256:
         ka->setmpi = pgpSetKeyMpiEDDSA;
