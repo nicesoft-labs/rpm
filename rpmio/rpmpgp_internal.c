@@ -1227,12 +1227,9 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
         pgpDigAlg sa = sig->alg;
         pgpDigAlg ka = key->alg;
         if (sa && sa->verify && sig->pubkey_algo == key->pubkey_algo) {
-            verifyfunc verify = sa->verify;
-            if (sig->pubkey_algo == PGPPUBKEYALGO_ECDSA && ka->is_gost)
-                verify = pgpVerifySigGOST2001;
             rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: using %s verifier\n",
                    pgpValStr(pgpPubkeyTbl, sig->pubkey_algo));
-            int vrc = verify(ka, sa, hash, hashlen, sig->hash_algo);
+            int vrc = sa->verify(ka, sa, hash, hashlen, sig->hash_algo);
 	rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: verify returned %d\n", vrc);
             if (vrc == 0) {
                 res = RPMRC_OK;
