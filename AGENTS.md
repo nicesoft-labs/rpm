@@ -1,4 +1,15 @@
-сначала установи нужные пакеты: 
+сначала установи
+git clone https://github.com/gost-engine/engine
+cd engine
+git submodule update --init
+mkdir build
+cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+cmake --build . --config Release
+make install
+дальше сконфигурируй и прикрути к openssl ГОСТ должен работать
+дальше
+установи нужные пакеты: 
 sudo apt-get install -y build-essential cmake pkg-config bison flex libpopt-dev \
     libselinux1-dev libsqlite3-dev libarchive-dev libcap-dev libacl1-dev \
     libaudit-dev libbz2-dev liblzma-dev libzstd-dev libssl-dev \
