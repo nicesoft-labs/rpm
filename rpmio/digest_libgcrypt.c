@@ -8,6 +8,11 @@
 #include <rpm/rpmlog.h>
 #include "debug.h"
 
+static int is_gost_curve(const char *oid)
+{
+    return oid && strcmp(oid, "1.2.643.2.2.35.1") == 0;
+}
+
 /**
  * MD5/SHA1 digest private data.
  */
@@ -469,8 +474,17 @@ static int pgpVerifySigECDSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
     gcry_sexp_build(&sexp_pkey, NULL,
                     "(public-key (ecc (curve \"%s\") (q %M)))",
                     curve_name, key->q);
-    if (sexp_sig && sexp_data && sexp_pkey)
+    if (sexp_sig && sexp_data && sexp_pkey) {
+        char buf[1024];
+        gcry_sexp_sprint(sexp_sig, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
+        rpmlog(RPMLOG_DEBUG, "pgpVerifySigECDSA: sig %s\n", buf);
+        gcry_sexp_sprint(sexp_data, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
+        rpmlog(RPMLOG_DEBUG, "pgpVerifySigECDSA: data %s\n", buf);
+        gcry_sexp_sprint(sexp_pkey, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
+        rpmlog(RPMLOG_DEBUG, "pgpVerifySigECDSA: pkey %s\n", buf);
         rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
+    }
+    rpmlog(RPMLOG_DEBUG, "pgpVerifySigECDSA: rc=%d\n", rc);
     gcry_sexp_release(sexp_sig);
     gcry_sexp_release(sexp_data);
     gcry_sexp_release(sexp_pkey);
@@ -618,9 +632,11 @@ static int pgpSupportedCurve(int curve)
     return 0;
 }
 
-pgpDigAlg pgpPubkeyNew(int algo, int curve)
+pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
 {
     pgpDigAlg ka = xcalloc(1, sizeof(*ka));;
+    ka->curve = curve;
+    ka->is_gost = is_gost_curve(oid);
 
     switch (algo) {
     case PGPPUBKEYALGO_RSA:
@@ -641,6 +657,7 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve)
         ka->setmpi = pgpSetKeyMpiDSA;
         ka->free = pgpFreeKeyDSA;
         ka->mpis = 4;
+	ka->curve = curve;
         break;
     case PGPPUBKEYALGO_GOST3410_2001:
         ka->setmpi = pgpSetKeyMpiEDDSA;
@@ -671,14 +688,18 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve)
     }
 
     ka->verify = pgpVerifyNULL; /* keys can't be verified */
-    rpmlog(RPMLOG_DEBUG, "pgpPubkeyNew: algo=%d mpis=%d setmpi=%p free=%p\n",
-           algo, ka->mpis, ka->setmpi, ka->free);
+    rpmlog(RPMLOG_DEBUG,
+           "pgpPubkeyNew: algo=%d curve_oid=%s is_gost=%d mpis=%d setmpi=%p free=%p\n",
+           algo, oid ? oid : "", ka->is_gost,
+           ka->mpis, ka->setmpi, ka->free);
     return ka;
 }
 
-pgpDigAlg pgpSignatureNew(int algo)
+pgpDigAlg pgpSignatureNew(int algo, int is_gost)
 {
     pgpDigAlg sa = xcalloc(1, sizeof(*sa));
+    sa->is_gost = is_gost;
+
 
     switch (algo) {
     case PGPPUBKEYALGO_RSA:
@@ -706,7 +727,7 @@ pgpDigAlg pgpSignatureNew(int algo)
     case PGPPUBKEYALGO_ECDSA:
         sa->setmpi = pgpSetSigMpiDSA;
         sa->free = pgpFreeSigDSA;
-        sa->verify = pgpVerifySigGOST2001;
+        sa->verify = is_gost ? pgpVerifySigGOST2001 : pgpVerifySigECDSA;
         sa->mpis = 2;
         break;
     case PGPPUBKEYALGO_GOST3410_2012_256:
@@ -727,7 +748,7 @@ pgpDigAlg pgpSignatureNew(int algo)
         sa->mpis = -1;
         break;
     }
-    rpmlog(RPMLOG_DEBUG, "pgpSignatureNew: algo=%d verify=%p\n", algo, sa->verify);
-
+    rpmlog(RPMLOG_DEBUG, "pgpSignatureNew: algo=%d is_gost=%d verify=%p\n",
+           algo, is_gost, sa->verify);
     return sa;
 }
