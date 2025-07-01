@@ -36,6 +36,7 @@ static struct pgpValTbl_s const pgpPubkeyTbl[] = {
     { PGPPUBKEYALGO_DSA,	"DSA" },
     { PGPPUBKEYALGO_EC,		"Elliptic Curve" },
     { PGPPUBKEYALGO_ECDSA,	"ECDSA" },
+    { PGPPUBKEYALGO_GOST3410_2001, "GOST3410-2001" },
     { PGPPUBKEYALGO_ELGAMAL,	"Elgamal" },
     { PGPPUBKEYALGO_DH,		"Diffie-Hellman (X9.42)" },
     { PGPPUBKEYALGO_EDDSA,	"EdDSA" },
