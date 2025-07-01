@@ -358,9 +358,54 @@ static int pgpVerifySigRSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
     int rc = 1; /* assume failure */
     EVP_PKEY_CTX *pkey_ctx = NULL;
     struct pgpDigSigRSA_s *sig = pgpsig->data;
-    void *padded_sig = NULL;
     struct pgpDigKeyRSA_s *key = pgpkey->data;
+    void *padded_sig = NULL;
 
+    /* Проверяем: GOST или RSA? */
+    if (EVP_PKEY_is_a(key->evp_pkey, "gost2001") ||
+        EVP_PKEY_is_a(key->evp_pkey, "gost2012_256") ||
+        EVP_PKEY_is_a(key->evp_pkey, "gost2012_512")) {
+
+        /* 🔑 Для GOST: не используем RSA padding */
+        pkey_ctx = EVP_PKEY_CTX_new(key->evp_pkey, NULL);
+        if (!pkey_ctx)
+            goto done;
+
+        if (EVP_PKEY_verify_init(pkey_ctx) <= 0)
+            goto done;
+
+        /* Выбираем нужный digest */
+        const EVP_MD *md = NULL;
+        if (EVP_PKEY_is_a(key->evp_pkey, "gost2001")) {
+            md = EVP_get_digestbyname("md_gost94");
+        } else if (EVP_PKEY_is_a(key->evp_pkey, "gost2012_256")) {
+            md = EVP_get_digestbyname("md_gost12_256");
+        } else if (EVP_PKEY_is_a(key->evp_pkey, "gost2012_512")) {
+            md = EVP_get_digestbyname("md_gost12_512");
+        }
+        if (!md)
+            goto done;
+
+        if (EVP_PKEY_CTX_set_signature_md(pkey_ctx, md) <= 0)
+            goto done;
+
+        /* Подготовим подпись (ASN1 или raw) */
+        int siglen = BN_num_bytes(sig->bn);
+        unsigned char *sigbuf = xcalloc(1, siglen);
+        if (BN_bn2bin(sig->bn, sigbuf) <= 0) {
+            free(sigbuf);
+            goto done;
+        }
+
+        if (EVP_PKEY_verify(pkey_ctx, sigbuf, siglen, hash, hashlen) == 1) {
+            rc = 0; /* success */
+        }
+
+        free(sigbuf);
+        goto done;
+    }
+
+    /* 🔑 Для RSA — старая логика */
     if (!constructRSASigningKey(key))
         goto done;
 
@@ -368,42 +413,30 @@ static int pgpVerifySigRSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
     if (!pkey_ctx)
         goto done;
 
-    if (EVP_PKEY_verify_init(pkey_ctx) <= 0)
+    if (EVP_PKEY_verify_init(pkey_ctx) != 1)
         goto done;
 
-    if (EVP_PKEY_base_id(key->evp_pkey) == EVP_PKEY_RSA) {
-        if (EVP_PKEY_CTX_set_rsa_padding(pkey_ctx, RSA_PKCS1_PADDING) <= 0)
-            goto done;
-    }
-
-    const EVP_MD *md = NULL;
-    if (EVP_PKEY_is_a(key->evp_pkey, "gost2001"))
-        md = EVP_get_digestbyname("md_gost94");
-    else if (EVP_PKEY_is_a(key->evp_pkey, "gost2012_256"))
-        md = EVP_get_digestbyname("md_gost12_256");
-    else if (EVP_PKEY_is_a(key->evp_pkey, "gost2012_512"))
-        md = EVP_get_digestbyname("md_gost12_512");
-    else
-        md = getEVPMD(hash_algo);
-
-    if (!md || EVP_PKEY_CTX_set_signature_md(pkey_ctx, md) <= 0) {
-        ERR_print_errors_fp(stderr);
+    if (EVP_PKEY_CTX_set_rsa_padding(pkey_ctx, RSA_PKCS1_PADDING) <= 0)
         goto done;
-    }
+
+    if (EVP_PKEY_CTX_set_signature_md(pkey_ctx, getEVPMD(hash_algo)) <= 0)
+        goto done;
 
     int pkey_len = EVP_PKEY_size(key->evp_pkey);
     padded_sig = xcalloc(1, pkey_len);
     if (BN_bn2binpad(sig->bn, padded_sig, pkey_len) <= 0)
         goto done;
 
-    if (EVP_PKEY_verify(pkey_ctx, padded_sig, pkey_len, hash, hashlen) == 1)
-        rc = 0;
+    if (EVP_PKEY_verify(pkey_ctx, padded_sig, pkey_len, hash, hashlen) == 1) {
+        rc = 0; /* success */
+    }
 
 done:
     EVP_PKEY_CTX_free(pkey_ctx);
     free(padded_sig);
     return rc;
 }
+
 
 
 /****************************** DSA ***************************************/
