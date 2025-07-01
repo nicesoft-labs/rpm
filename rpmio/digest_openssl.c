@@ -376,21 +376,18 @@ static int pgpVerifySigRSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
 
     {
         const EVP_MD *md = NULL;
-        /* If the key uses a GOST algorithm, select matching digest */
-#ifdef HAVE_OPENSSL_EVP_H
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
         if (EVP_PKEY_is_a(key->evp_pkey, "gost2001"))
             md = EVP_get_digestbyname("md_gost94");
         else if (EVP_PKEY_is_a(key->evp_pkey, "gost2012_256"))
             md = EVP_get_digestbyname("md_gost12_256");
         else if (EVP_PKEY_is_a(key->evp_pkey, "gost2012_512"))
             md = EVP_get_digestbyname("md_gost12_512");
-#endif
-#endif
-        if (!md)
+     else
             md = getEVPMD(hash_algo);
-        if (EVP_PKEY_CTX_set_signature_md(pkey_ctx, md) <= 0)
+        if (!md || EVP_PKEY_CTX_set_signature_md(pkey_ctx, md) <= 0) {
+            ERR_print_errors_fp(stderr);
             goto done;
+	}
     }
 
     int pkey_len = EVP_PKEY_size(key->evp_pkey);
