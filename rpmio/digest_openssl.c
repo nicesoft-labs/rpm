@@ -6,6 +6,8 @@
 #include <rpm/rpmcrypto.h>
 
 #include "rpmpgp_internal.h"
+#include <openssl/err.h>
+
 
 struct DIGEST_CTX_s {
     rpmDigestFlags flags;	/*!< Bit(s) to control digest operation. */
