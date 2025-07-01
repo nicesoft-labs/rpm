@@ -699,7 +699,6 @@ static int getPubkeyFingerprint(const uint8_t *h, size_t hlen,
             mpis = 4;
             break;
         case PGPPUBKEYALGO_ECDSA:
-        case PGPPUBKEYALGO_GOST3410_2001:
             mpis = 3;
             /* ECDSA and GOST-2001 have a curve OID followed by one EC point */
             if (se[0] == 0x00 || se[0] == 0xff || pend - se < 1 + se[0])
