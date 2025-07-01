@@ -181,6 +181,10 @@ typedef enum pgpPubkeyAlgo_e {
     PGPPUBKEYALGO_GOST3410_2001_XCHB = 104, /*!< GOST R 34.10-2001-XchB */
 } pgpPubkeyAlgo;
 
+/* GOST R 34.10-2001 reuses the ECDSA algorithm identifier */
+#define PGPPUBKEYALGO_GOST3410_2001 PGPPUBKEYALGO_ECDSA
+
+
 /** \ingroup rpmpgp
  * 9.2. Symmetric Key Algorithms
  *
