@@ -6,7 +6,7 @@ sudo apt-get install -y build-essential cmake pkg-config bison flex libpopt-dev 
     libaudit-dev libbz2-dev liblzma-dev libzstd-dev libssl-dev \
     libmagic-dev zlib1g-dev python3-dev liblua5.4-dev debugedit
 
-mkdir build && cd build
+mkdir build2 && cd build2
 cmake .. \
   -DENABLE_BDB_RO=ON \
   -DENABLE_SQLITE=ON \
