@@ -500,6 +500,10 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve)
         ka->mpis = 2;
         break;
     case PGPPUBKEYALGO_DSA:
+    case PGPPUBKEYALGO_GOST3410_2001_A:
+    case PGPPUBKEYALGO_GOST3410_2001_B:
+    case PGPPUBKEYALGO_GOST3410_2001_C:
+    case PGPPUBKEYALGO_GOST3410_2001_XCHA:
         ka->setmpi = pgpSetKeyMpiDSA;
         ka->free = pgpFreeKeyDSA;
         ka->mpis = 4;
@@ -538,6 +542,10 @@ pgpDigAlg pgpSignatureNew(int algo)
         sa->mpis = 1;
         break;
     case PGPPUBKEYALGO_DSA:
+    case PGPPUBKEYALGO_GOST3410_2001_A:
+    case PGPPUBKEYALGO_GOST3410_2001_B:
+    case PGPPUBKEYALGO_GOST3410_2001_C:
+    case PGPPUBKEYALGO_GOST3410_2001_XCHA:
         sa->setmpi = pgpSetSigMpiDSA;
         sa->free = pgpFreeSigDSA;
         sa->verify = pgpVerifySigDSA;
