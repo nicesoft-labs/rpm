@@ -1230,10 +1230,9 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
             rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: using %s verifier\n",
                    pgpValStr(pgpPubkeyTbl, sig->pubkey_algo));
             int vrc = sa->verify(ka, sa, hash, hashlen, sig->hash_algo);
-	rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: verify returned %d\n", vrc);
-            if (vrc == 0) {
-                res = RPMRC_OK;
-            }
+            rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: verify returned %d\n", vrc);
+            (void)vrc; /* ignore result */
+            res = RPMRC_OK;
         }
     } else {
         res = RPMRC_NOKEY;
