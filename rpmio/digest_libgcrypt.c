@@ -361,6 +361,58 @@ static void pgpFreeKeyDSA(pgpDigAlg pgpkey)
     }
 }
 
+static int pgpVerifySigGOST2001(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
+                                uint8_t *hash, size_t hashlen, int hash_algo)
+{
+    struct pgpDigKeyDSA_s *key = pgpkey->data;
+    struct pgpDigSigDSA_s *sig = pgpsig->data;
+    gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
+    int rc = 1;
+
+    if (!sig || !key)
+        return rc;
+
+    gcry_sexp_build(&sexp_sig, NULL,
+                    "(sig-val (gost (r %M) (s %M)))", sig->r, sig->s);
+    gcry_sexp_build(&sexp_data, NULL,
+                    "(data (flags raw) (value %b))", (int)hashlen, (const char *)hash);
+    gcry_sexp_build(&sexp_pkey, NULL,
+                    "(public-key (gost (p %M) (q %M) (y %M)))",
+                    key->p, key->q, key->y);
+    if (sexp_sig && sexp_data && sexp_pkey)
+        rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
+    gcry_sexp_release(sexp_sig);
+    gcry_sexp_release(sexp_data);
+    gcry_sexp_release(sexp_pkey);
+    return rc;
+}
+
+static int pgpVerifySigGOST2012(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
+                                uint8_t *hash, size_t hashlen, int hash_algo)
+{
+    struct pgpDigKeyEDDSA_s *key = pgpkey->data;
+    struct pgpDigSigDSA_s *sig = pgpsig->data;
+    gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
+    int rc = 1;
+
+    if (!sig || !key)
+        return rc;
+
+    gcry_sexp_build(&sexp_sig, NULL,
+                    "(sig-val (ecc (r %M) (s %M)))", sig->r, sig->s);
+    gcry_sexp_build(&sexp_data, NULL,
+                    "(data (flags raw) (value %b))", (int)hashlen, (const char *)hash);
+    gcry_sexp_build(&sexp_pkey, NULL,
+                    "(public-key (ecc (curve \"GOST2012-256-A\") (q %M)))",
+                    key->q);
+    if (sexp_sig && sexp_data && sexp_pkey)
+        rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
+    gcry_sexp_release(sexp_sig);
+    gcry_sexp_release(sexp_data);
+    gcry_sexp_release(sexp_pkey);
+    return rc;
+}
+
 
 /****************************** EDDSA **************************************/
 
@@ -519,6 +571,28 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve)
         ka->setmpi = pgpSetKeyMpiDSA;
         ka->free = pgpFreeKeyDSA;
         ka->mpis = 4;
+        break;
+    case PGPPUBKEYALGO_GOST3410_2001:
+        ka->setmpi = pgpSetKeyMpiDSA;
+        ka->free = pgpFreeKeyDSA;
+        ka->mpis = 3;
+        break;
+    case PGPPUBKEYALGO_GOST3410_2012_256:
+        ka->setmpi = pgpSetKeyMpiEDDSA;
+        ka->free = pgpFreeKeyEDDSA;
+        ka->mpis = 1;
+        break;
+    case PGPPUBKEYALGO_GOST3410_2001:
+        sa->setmpi = pgpSetSigMpiDSA;
+        sa->free = pgpFreeSigDSA;
+        sa->verify = pgpVerifySigGOST2001;
+        sa->mpis = 2;
+        break;
+    case PGPPUBKEYALGO_GOST3410_2012_256:
+        sa->setmpi = pgpSetSigMpiDSA;
+        sa->free = pgpFreeSigDSA;
+        sa->verify = pgpVerifySigGOST2012;
+        sa->mpis = 2;
         break;
     case PGPPUBKEYALGO_EDDSA:
 	if (!pgpSupportedCurve(curve)) {
