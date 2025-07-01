@@ -697,7 +697,6 @@ static int getPubkeyFingerprint(const uint8_t *h, size_t hlen,
             mpis = 4;
             break;
         case PGPPUBKEYALGO_ECDSA:
-        case PGPPUBKEYALGO_GOST3410_2001:
             mpis = 3;
             break;
         case PGPPUBKEYALGO_GOST3410_2012_256:
