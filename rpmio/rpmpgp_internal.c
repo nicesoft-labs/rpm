@@ -19,6 +19,26 @@
 
 static int _print = 0;
 
+static const char *oid2str(const uint8_t *oid, int len, char *buf, size_t buflen)
+{
+    if (len <= 0 || buflen == 0)
+        return NULL;
+    unsigned int v = 0;
+    size_t pos = 0;
+    if (len > 0) {
+        pos += snprintf(buf + pos, buflen - pos, "%u.%u", oid[0] / 40, oid[0] % 40);
+        v = 0;
+        for (int i = 1; i < len; i++) {
+            v = (v << 7) | (oid[i] & 0x7f);
+            if (!(oid[i] & 0x80)) {
+                pos += snprintf(buf + pos, buflen - pos, ".%u", v);
+                v = 0;
+            }
+        }
+    }
+    return buf;
+}
+
 /** \ingroup rpmio
  * Values parsed from OpenPGP signature/pubkey packet(s).
  */
@@ -409,11 +429,11 @@ static int processMpis(const int mpis, pgpDigAlg sigalg,
 }
 
 static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
-		const uint8_t *p, const uint8_t *h, size_t hlen,
-		pgpDigParams sigp)
+                const uint8_t *p, const uint8_t *h, size_t hlen,
+                pgpDigParams sigp, int is_gost)
 {
     const uint8_t * pend = h + hlen;
-    pgpDigAlg sigalg = pgpSignatureNew(pubkey_algo);
+    pgpDigAlg sigalg = pgpSignatureNew(pubkey_algo, is_gost);
 
     int rc = processMpis(sigalg->mpis, sigalg, p, pend);
 
@@ -427,7 +447,7 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
 }
 
 static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
-		     pgpDigParams _digp)
+                     pgpDigParams _digp, int is_gost)
 {
     uint8_t version = 0;
     const uint8_t * p;
@@ -475,8 +495,8 @@ static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
 	    memcpy(_digp->signhash16, v->signhash16, sizeof(_digp->signhash16));
 	}
 
-	p = ((uint8_t *)v) + sizeof(*v);
-	rc = tag ? pgpPrtSigParams(tag, v->pubkey_algo, p, h, hlen, _digp) : 0;
+        p = ((uint8_t *)v) + sizeof(*v);
+        rc = tag ? pgpPrtSigParams(tag, v->pubkey_algo, p, h, hlen, _digp, 0) : 0;
     }	break;
     case 4:
     {   pgpPktSigV4 v = (pgpPktSigV4)h;
@@ -538,7 +558,7 @@ static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
 	if (p > hend)
 	    return 1;
 
-	rc = tag ? pgpPrtSigParams(tag, v->pubkey_algo, p, h, hlen, _digp) : 0;
+        rc = tag ? pgpPrtSigParams(tag, v->pubkey_algo, p, h, hlen, _digp, 0) : 0;
     }	break;
     default:
 	rpmlog(RPMLOG_WARNING, _("Unsupported version of signature: V%d\n"), version);
@@ -581,6 +601,8 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
     int rc = 1; /* assume failure */
     const uint8_t *pend = h + hlen;
     int curve = 0;
+    char oidbuf[64];
+    const char *oidstr = NULL;
     if (!isKey(keyp))
 	return rc;
     /* We can't handle more than one key at a time */
@@ -593,9 +615,10 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
         if (len == 0 || len == 0xff || len >= hlen)
             return rc;
         curve = pgpCurveByOid(p + 1, len);
+        oidstr = oid2str(p + 1, len, oidbuf, sizeof(oidbuf));
         p += len + 1;
     }
-    pgpDigAlg keyalg = pgpPubkeyNew(pubkey_algo, curve);
+    pgpDigAlg keyalg = pgpPubkeyNew(pubkey_algo, curve, oidstr);
     rc = processMpis(keyalg->mpis, keyalg, p, pend);
     if (rc == 0) {
 	keyp->pubkey_algo = pubkey_algo;
@@ -787,7 +810,7 @@ static int pgpPrtPkt(struct pgpPkt *p, pgpDigParams _digp)
 
     switch (p->tag) {
     case PGPTAG_SIGNATURE:
-	rc = pgpPrtSig(p->tag, p->body, p->blen, _digp);
+        rc = pgpPrtSig(p->tag, p->body, p->blen, _digp, 0);
 	break;
     case PGPTAG_PUBLIC_KEY:
 	/* Get the public key Key ID. */
@@ -962,7 +985,7 @@ static int pgpVerifySelf(pgpDigParams key, pgpDigParams selfsig,
 }
 
 static int parseSubkeySig(const struct pgpPkt *pkt, uint8_t tag,
-			  pgpDigParams *params_p) {
+                          pgpDigParams *params_p, int is_gost) {
     pgpDigParams params = *params_p = NULL; /* assume failure */
 
     if (pkt->tag != PGPTAG_SIGNATURE)
@@ -970,8 +993,8 @@ static int parseSubkeySig(const struct pgpPkt *pkt, uint8_t tag,
 
     params = pgpDigParamsNew(tag);
 
-    if (pgpPrtSig(tag, pkt->body, pkt->blen, params))
-	goto fail;
+    if (pgpPrtSig(tag, pkt->body, pkt->blen, params, is_gost))
+        goto fail;
 
     if (params->sigtype != PGPSIGTYPE_SUBKEY_BINDING &&
 	params->sigtype != PGPSIGTYPE_SUBKEY_REVOKE)
@@ -1117,10 +1140,11 @@ int pgpPrtParamsSubkeys(const uint8_t *pkts, size_t pktlen,
 		continue;
 	    }
 
-	    pgpDigParams subkey_sig = NULL;
-	    if (decodePkt(p, pend - p, &pkt) ||
-	        parseSubkeySig(&pkt, 0, &subkey_sig))
-	    {
+            pgpDigParams subkey_sig = NULL;
+            int is_gost = digps[count]->alg ? digps[count]->alg->is_gost : 0;
+            if (decodePkt(p, pend - p, &pkt) ||
+                parseSubkeySig(&pkt, 0, &subkey_sig, is_gost))
+            {
 		pgpDigParamsFree(digps[count]);
 		break;
 	    }
@@ -1202,10 +1226,15 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
 	    goto exit;
         pgpDigAlg sa = sig->alg;
         pgpDigAlg ka = key->alg;
-        if (sa && sa->verify && sig->pubkey_algo == key->pubkey_algo) {
-            rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: using %s verifier\n",
-                   pgpValStr(pgpPubkeyTbl, sig->pubkey_algo));
-            int vrc = sa->verify(ka, sa, hash, hashlen, sig->hash_algo);
+        if (sa && sig->pubkey_algo == key->pubkey_algo) {
+            verifyfunc verify = sa->verify;
+            if (sig->pubkey_algo == PGPPUBKEYALGO_ECDSA) {
+                verify = ka->is_gost ? pgpVerifySigGOST2001 : pgpVerifySigECDSA;
+            }
+		rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: using %s verifier\n",
+                   verify == pgpVerifySigGOST2001 ? "GOST2001" :
+                   (verify == pgpVerifySigECDSA ? "ECDSA" : pgpValStr(pgpPubkeyTbl, sig->pubkey_algo)));
+            int vrc = verify(ka, sa, hash, hashlen, sig->hash_algo);
             rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: verify returned %d\n", vrc);
             if (vrc == 0) {
                 res = RPMRC_OK;
