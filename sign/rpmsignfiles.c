@@ -56,15 +56,21 @@ const char *key, char *keypass, uint32_t *siglenp)
     signature[0] = '\x03';
 
     /* calculate file signature */
+    rpmlog(RPMLOG_NOTICE, "Calling sign_hash: algo=%s diglen=%d key=%s\n", algo, diglen, key);
+
     siglen = sign_hash(algo, fdigest, diglen, key, keypass, signature+1);
     if (siglen < 0) {
 	rpmlog(RPMLOG_ERR, _("sign_hash failed\n"));
+	rpmlog(RPMLOG_ERR, _("Failed sign_hash: algo=%s diglen=%d\n"), algo, diglen);
+
 	return NULL;
     }
 
     *siglenp = siglen + 1;
+    rpmlog(RPMLOG_NOTICE, "sign_hash OK: siglen=%d\n", siglen);
     /* convert file signature binary to hex */
     fsignature = rpmhex(signature, siglen+1);
+    rpmlog(RPMLOG_NOTICE, "Signature HEX: %s\n", fsignature);
     return fsignature;
 }
 
@@ -106,11 +112,13 @@ rpmRC rpmSignFiles(Header sigh, Header h, const char *key, char *keypass)
     while (rpmfiNext(fi) >= 0) {
 	uint32_t slen = 0;
 	digest = rpmfiFDigest(fi, NULL, NULL);
+	rpmlog(RPMLOG_NOTICE, "Signing file: %s\n", rpmfiFN(fi));
 	signature = signFile(algoname, digest, diglen, key, keypass, &slen);
 	if (!signature) {
 	    rpmlog(RPMLOG_ERR, _("signFile failed\n"));
 	    goto exit;
 	}
+	rpmlog(RPMLOG_NOTICE, "Putting signature: %s for file: %s\n", signature, rpmfiFN(fi));
 	td.data = &signature;
 	if (!headerPut(sigh, &td, HEADERPUT_APPEND)) {
 	    rpmlog(RPMLOG_ERR, _("headerPutString failed\n"));
@@ -128,6 +136,7 @@ rpmRC rpmSignFiles(Header sigh, Header h, const char *key, char *keypass)
 	td.data = &siglen;
 	td.count = 1;
 	headerPut(sigh, &td, HEADERPUT_DEFAULT);
+	rpmlog(RPMLOG_NOTICE, "FILESIGNATURELENGTH saved: %u\n", siglen);
     }
 
     rc = RPMRC_OK;
