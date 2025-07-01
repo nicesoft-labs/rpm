@@ -358,9 +358,7 @@ static int pgpVerifySigRSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
     int rc = 1; /* assume failure */
     EVP_PKEY_CTX *pkey_ctx = NULL;
     struct pgpDigSigRSA_s *sig = pgpsig->data;
-
     void *padded_sig = NULL;
-
     struct pgpDigKeyRSA_s *key = pgpkey->data;
 
     if (!constructRSASigningKey(key))
@@ -370,26 +368,27 @@ static int pgpVerifySigRSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
     if (!pkey_ctx)
         goto done;
 
-    if (EVP_PKEY_verify_init(pkey_ctx) != 1)
+    if (EVP_PKEY_verify_init(pkey_ctx) <= 0)
         goto done;
 
-    if (EVP_PKEY_CTX_set_rsa_padding(pkey_ctx, RSA_PKCS1_PADDING) <= 0)
-        goto done;
-
-    {
-        const EVP_MD *md = NULL;
-        if (EVP_PKEY_is_a(key->evp_pkey, "gost2001"))
-            md = EVP_get_digestbyname("md_gost94");
-        else if (EVP_PKEY_is_a(key->evp_pkey, "gost2012_256"))
-            md = EVP_get_digestbyname("md_gost12_256");
-        else if (EVP_PKEY_is_a(key->evp_pkey, "gost2012_512"))
-            md = EVP_get_digestbyname("md_gost12_512");
-     else
-            md = getEVPMD(hash_algo);
-        if (!md || EVP_PKEY_CTX_set_signature_md(pkey_ctx, md) <= 0) {
-            ERR_print_errors_fp(stderr);
+    if (EVP_PKEY_base_id(key->evp_pkey) == EVP_PKEY_RSA) {
+        if (EVP_PKEY_CTX_set_rsa_padding(pkey_ctx, RSA_PKCS1_PADDING) <= 0)
             goto done;
-	}
+    }
+
+    const EVP_MD *md = NULL;
+    if (EVP_PKEY_is_a(key->evp_pkey, "gost2001"))
+        md = EVP_get_digestbyname("md_gost94");
+    else if (EVP_PKEY_is_a(key->evp_pkey, "gost2012_256"))
+        md = EVP_get_digestbyname("md_gost12_256");
+    else if (EVP_PKEY_is_a(key->evp_pkey, "gost2012_512"))
+        md = EVP_get_digestbyname("md_gost12_512");
+    else
+        md = getEVPMD(hash_algo);
+
+    if (!md || EVP_PKEY_CTX_set_signature_md(pkey_ctx, md) <= 0) {
+        ERR_print_errors_fp(stderr);
+        goto done;
     }
 
     int pkey_len = EVP_PKEY_size(key->evp_pkey);
@@ -398,16 +397,14 @@ static int pgpVerifySigRSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
         goto done;
 
     if (EVP_PKEY_verify(pkey_ctx, padded_sig, pkey_len, hash, hashlen) == 1)
-    {
-        /* Success */
         rc = 0;
-    }
 
 done:
     EVP_PKEY_CTX_free(pkey_ctx);
     free(padded_sig);
     return rc;
 }
+
 
 /****************************** DSA ***************************************/
 /* Key */
