@@ -62,7 +62,7 @@ static const struct vfyinfo_s rpmvfyitems[] = {
 	(RPMSIG_HEADER|RPMSIG_PAYLOAD), RPM_HASH_MD5, }, },
     {	RPMSIGTAG_GPG,			1,
 	{ RPMSIG_SIGNATURE_TYPE,		RPMVSF_NODSA,
-	(RPMSIG_HEADER|RPMSIG_PAYLOAD), 0, PGPPUBKEYALGO_DSA, }, },
+	(RPMSIG_HEADER|RPMSIG_PAYLOAD), 0, 0, }, },
     {	RPMSIGTAG_PAYLOADSIZE,		1,
 	{ RPMSIG_OTHER_TYPE,		0,
 	(RPMSIG_PAYLOAD),		0, 0, }, },
@@ -71,7 +71,7 @@ static const struct vfyinfo_s rpmvfyitems[] = {
 	0,				0, 0, }, },
     {	RPMTAG_DSAHEADER,		1,
 	{ RPMSIG_SIGNATURE_TYPE,		RPMVSF_NODSAHEADER,
-	(RPMSIG_HEADER),		0, PGPPUBKEYALGO_DSA, }, },
+	(RPMSIG_HEADER),		0, 0, }, },
     {	RPMTAG_RSAHEADER,		1,
 	{ RPMSIG_SIGNATURE_TYPE,		RPMVSF_NORSAHEADER,
 	(RPMSIG_HEADER),		0, PGPPUBKEYALGO_RSA, }, },
@@ -211,8 +211,9 @@ static void rpmsinfoInit(const struct vfyinfo_s *vinfo,
 	    rpmlog(RPMLOG_WARNING, "%s\n", lints);
 	    free(lints);
 	}
-	sinfo->hashalgo = pgpDigParamsAlgo(sinfo->sig, PGPVAL_HASHALGO);
-	sinfo->keyid = pgpGrab(pgpDigParamsSignID(sinfo->sig)+4, 4);
+        sinfo->hashalgo = pgpDigParamsAlgo(sinfo->sig, PGPVAL_HASHALGO);
+        sinfo->sigalgo = pgpDigParamsAlgo(sinfo->sig, PGPVAL_PUBKEYALGO);
+        sinfo->keyid = pgpGrab(pgpDigParamsSignID(sinfo->sig)+4, 4);
     } else if (sinfo->type == RPMSIG_DIGEST_TYPE) {
 	if (td->type == RPM_BIN_TYPE) {
 	    sinfo->dig = rpmhex(data, dlen);
