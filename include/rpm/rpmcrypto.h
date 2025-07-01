@@ -27,7 +27,9 @@ typedef enum rpmHashAlgo_e {
     RPM_HASH_SHA384		=  9,	/*!< SHA384 */
     RPM_HASH_SHA512		= 10,	/*!< SHA512 */
     RPM_HASH_SHA224		= 11,	/*!< SHA224 */
-    RPM_HASH_GOST3411_2012_256  = 12,   /*!< GOST R 34.11-2012 256-bit */
+    RPM_HASH_GOSTR3411_2012_256 = 164,   /*!< GOST R 34.11-2012 256-bit */
+    RPM_HASH_GOSTR3411_2012_512 = 165,  /*!< GOST R 34.11-2012 512-bit */
+    RPM_HASH_GOSTR3411_94       = 166,  /*!< GOST R 34.11-94 */
 
 } rpmHashAlgo;
 
