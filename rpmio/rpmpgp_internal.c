@@ -586,12 +586,14 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
     /* We can't handle more than one key at a time */
     if (keyp->alg)
 	return rc;
-    if (pubkey_algo == PGPPUBKEYALGO_EDDSA) {
-	int len = (hlen > 1) ? p[0] : 0;
-	if (len == 0 || len == 0xff || len >= hlen)
-	    return rc;
-	curve = pgpCurveByOid(p + 1, len);
-	p += len + 1;
+    if (pubkey_algo == PGPPUBKEYALGO_EDDSA ||
+        pubkey_algo == PGPPUBKEYALGO_ECDSA ||
+        pubkey_algo == PGPPUBKEYALGO_GOST3410_2001) {
+        int len = (hlen > 1) ? p[0] : 0;
+        if (len == 0 || len == 0xff || len >= hlen)
+            return rc;
+        curve = pgpCurveByOid(p + 1, len);
+        p += len + 1;
     }
     pgpDigAlg keyalg = pgpPubkeyNew(pubkey_algo, curve);
     rc = processMpis(keyalg->mpis, keyalg, p, pend);
@@ -697,7 +699,13 @@ static int getPubkeyFingerprint(const uint8_t *h, size_t hlen,
             mpis = 4;
             break;
         case PGPPUBKEYALGO_ECDSA:
+        case PGPPUBKEYALGO_GOST3410_2001:
             mpis = 3;
+            /* ECDSA and GOST-2001 have a curve OID followed by one EC point */
+            if (se[0] == 0x00 || se[0] == 0xff || pend - se < 1 + se[0])
+                return rc;
+            se += 1 + se[0];
+            mpis = 1;
             break;
         case PGPPUBKEYALGO_GOST3410_2012_256:
             mpis = 1;
