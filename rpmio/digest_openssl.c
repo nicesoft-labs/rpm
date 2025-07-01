@@ -361,81 +361,108 @@ static int pgpVerifySigRSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
     struct pgpDigKeyRSA_s *key = pgpkey->data;
     void *padded_sig = NULL;
 
-    /* Проверяем: GOST или RSA? */
-    if (EVP_PKEY_is_a(key->evp_pkey, "gost2001") ||
+    int is_gost =
+        EVP_PKEY_is_a(key->evp_pkey, "gost2001") ||
         EVP_PKEY_is_a(key->evp_pkey, "gost2012_256") ||
-        EVP_PKEY_is_a(key->evp_pkey, "gost2012_512")) {
+        EVP_PKEY_is_a(key->evp_pkey, "gost2012_512");
 
-        /* 🔑 Для GOST: не используем RSA padding */
+    fprintf(stderr, "=== pgpVerifySigRSA ===\n");
+    fprintf(stderr, "Key type: %s\n", is_gost ? "GOST" : "RSA");
+    fprintf(stderr, "hashlen: %zu\n", hashlen);
+
+    if (is_gost) {
+        fprintf(stderr, "Using GOST path, no explicit digest setup\n");
+
         pkey_ctx = EVP_PKEY_CTX_new(key->evp_pkey, NULL);
-        if (!pkey_ctx)
+        if (!pkey_ctx) {
+            fprintf(stderr, "EVP_PKEY_CTX_new failed\n");
             goto done;
-
-        if (EVP_PKEY_verify_init(pkey_ctx) <= 0)
-            goto done;
-
-        /* Выбираем нужный digest */
-        const EVP_MD *md = NULL;
-        if (EVP_PKEY_is_a(key->evp_pkey, "gost2001")) {
-            md = EVP_get_digestbyname("md_gost94");
-        } else if (EVP_PKEY_is_a(key->evp_pkey, "gost2012_256")) {
-            md = EVP_get_digestbyname("md_gost12_256");
-        } else if (EVP_PKEY_is_a(key->evp_pkey, "gost2012_512")) {
-            md = EVP_get_digestbyname("md_gost12_512");
         }
-        if (!md)
-            goto done;
 
-        if (EVP_PKEY_CTX_set_signature_md(pkey_ctx, md) <= 0)
+        if (EVP_PKEY_verify_init(pkey_ctx) <= 0) {
+            fprintf(stderr, "EVP_PKEY_verify_init failed\n");
+            ERR_print_errors_fp(stderr);
             goto done;
+        }
 
-        /* Подготовим подпись (ASN1 или raw) */
         int siglen = BN_num_bytes(sig->bn);
+        fprintf(stderr, "Signature BN bytes: %d\n", siglen);
+
         unsigned char *sigbuf = xcalloc(1, siglen);
         if (BN_bn2bin(sig->bn, sigbuf) <= 0) {
+            fprintf(stderr, "BN_bn2bin failed\n");
             free(sigbuf);
             goto done;
         }
 
         if (EVP_PKEY_verify(pkey_ctx, sigbuf, siglen, hash, hashlen) == 1) {
-            rc = 0; /* success */
+            fprintf(stderr, "EVP_PKEY_verify OK!\n");
+            rc = 0;
+        } else {
+            fprintf(stderr, "EVP_PKEY_verify FAILED\n");
+            ERR_print_errors_fp(stderr);
         }
 
         free(sigbuf);
         goto done;
     }
 
-    /* 🔑 Для RSA — старая логика */
-    if (!constructRSASigningKey(key))
+    fprintf(stderr, "Using RSA path\n");
+
+    if (!constructRSASigningKey(key)) {
+        fprintf(stderr, "constructRSASigningKey failed\n");
         goto done;
+    }
 
     pkey_ctx = EVP_PKEY_CTX_new(key->evp_pkey, NULL);
-    if (!pkey_ctx)
+    if (!pkey_ctx) {
+        fprintf(stderr, "EVP_PKEY_CTX_new failed\n");
         goto done;
+    }
 
-    if (EVP_PKEY_verify_init(pkey_ctx) != 1)
+    if (EVP_PKEY_verify_init(pkey_ctx) != 1) {
+        fprintf(stderr, "EVP_PKEY_verify_init failed\n");
         goto done;
+    }
 
-    if (EVP_PKEY_CTX_set_rsa_padding(pkey_ctx, RSA_PKCS1_PADDING) <= 0)
+    if (EVP_PKEY_CTX_set_rsa_padding(pkey_ctx, RSA_PKCS1_PADDING) <= 0) {
+        fprintf(stderr, "EVP_PKEY_CTX_set_rsa_padding failed\n");
         goto done;
+    }
 
-    if (EVP_PKEY_CTX_set_signature_md(pkey_ctx, getEVPMD(hash_algo)) <= 0)
+    const EVP_MD *md = getEVPMD(hash_algo);
+    fprintf(stderr, "RSA path: EVP_MD = %s\n", EVP_MD_name(md));
+
+    if (EVP_PKEY_CTX_set_signature_md(pkey_ctx, md) <= 0) {
+        fprintf(stderr, "EVP_PKEY_CTX_set_signature_md failed\n");
         goto done;
+    }
 
     int pkey_len = EVP_PKEY_size(key->evp_pkey);
+    fprintf(stderr, "RSA key size: %d\n", pkey_len);
+
     padded_sig = xcalloc(1, pkey_len);
-    if (BN_bn2binpad(sig->bn, padded_sig, pkey_len) <= 0)
+    if (BN_bn2binpad(sig->bn, padded_sig, pkey_len) <= 0) {
+        fprintf(stderr, "BN_bn2binpad failed\n");
         goto done;
+    }
 
     if (EVP_PKEY_verify(pkey_ctx, padded_sig, pkey_len, hash, hashlen) == 1) {
-        rc = 0; /* success */
+        fprintf(stderr, "RSA EVP_PKEY_verify OK!\n");
+        rc = 0;
+    } else {
+        fprintf(stderr, "RSA EVP_PKEY_verify FAILED\n");
     }
 
 done:
+    if (rc != 0) {
+        fprintf(stderr, "=== Verification FAILED ===\n");
+    }
     EVP_PKEY_CTX_free(pkey_ctx);
     free(padded_sig);
     return rc;
 }
+
 
 
 
