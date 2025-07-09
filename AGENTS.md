@@ -21,27 +21,27 @@ sudo apt-get install -y build-essential cmake pkg-config bison flex libpopt-dev 
   libusb-1.0-0-dev libgpg-error-dev libassuan-dev libgcrypt20-dev libksba-dev \
   libnpth0-dev
 
-mkdir build2 && cd build2
-cmake .. \
-  -DENABLE_BDB_RO=ON \
-  -DENABLE_SQLITE=ON \
-  -DRPM_VENDOR="niceos" \
-  -DWITH_OPENSSL=ON \
-  -DWITH_SELINUX=ON \
-  -DENABLE_PYTHON=ON \
-  -DWITH_INTERNAL_OPENPGP=OFF \
-  -DENABLE_PLUGINS=ON \
-  -DWITH_CAP=ON \
-  -DWITH_ACL=ON \
-  -DWITH_ARCHIVE=ON \
-  -DWITH_AUDIT=ON \
-  -DENABLE_NDB=OFF \
-  -DENABLE_OPENMP=OFF \
-  -DWITH_IMAEVM=ON \
-  -DENABLE_NLS=ON \
-  -DWITH_FAPOLICYD=ON \
-  -DWITH_ZSTD=ON \
-  -DENABLE_TESTSUITE=OFF
+собирается проект так:
+mkdir build2 && cd build2 && cmake .. \
+-DENABLE_BDB_RO=ON \
+-DENABLE_SQLITE=ON \
+-DRPM_VENDOR="niceos" \
+-DWITH_OPENSSL=ON \
+-DWITH_SELINUX=ON \
+-DENABLE_PYTHON=ON \
+-DENABLE_PLUGINS=ON \
+-DWITH_CAP=ON \
+-DWITH_ACL=ON \
+-DWITH_INTERNAL_OPENPGP=ON \
+-DWITH_ARCHIVE=ON \
+-DWITH_AUDIT=ON \
+-DENABLE_NDB=OFF \
+-DENABLE_OPENMP=OFF \
+-DWITH_IMAEVM=ON \
+-DENABLE_NLS=ON \
+-DWITH_FAPOLICYD=ON \
+-DENABLE_TESTSUITE=OFF 
+
 make -j$(nproc)
 
 затем запиши в файл /root/stan01-key.asc этот ключ:
