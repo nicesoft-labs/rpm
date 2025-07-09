@@ -1231,8 +1231,7 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
                    pgpValStr(pgpPubkeyTbl, sig->pubkey_algo));
             int vrc = sa->verify(ka, sa, hash, hashlen, sig->hash_algo);
             rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: verify returned %d\n", vrc);
-            (void)vrc; /* ignore result */
-            res = RPMRC_OK;
+            res = (vrc == 0) ? RPMRC_OK : RPMRC_FAIL;
         }
     } else {
         res = RPMRC_NOKEY;
