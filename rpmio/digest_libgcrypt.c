@@ -398,10 +398,9 @@ static int pgpVerifySigGOST2001(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
         gcry_sexp_sprint(sexp_pkey, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
         rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST2001: pkey %s\n", buf);
     }
-    if (sexp_sig && sexp_data && sexp_pkey) {
-        gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey);
-        rc = 0; /* ignore verification result */
-    }
+    if (sexp_sig && sexp_data && sexp_pkey)
+        rc = (gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0) ? 0 : 1;
+	
     rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST2001: rc=%d\n", rc);
 
     gcry_sexp_release(sexp_sig);
