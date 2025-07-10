@@ -485,8 +485,8 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     char oidbuf[64];
     const char *oidstr = NULL;
 
-    /* Обрабатывать OID-префикс только для EDDSA и GOST-подписей */
     if (pubkey_algo == PGPPUBKEYALGO_EDDSA ||
+        pubkey_algo == PGPPUBKEYALGO_ECDSA ||
         pubkey_algo == PGPPUBKEYALGO_GOST3410_2001) {
         int len = (hlen > 1) ? p[0] : 0;
         if (len > 0 && len != 0xff && len < hlen) {
