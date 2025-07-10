@@ -1262,12 +1262,14 @@ static int gost_verify(pgpDigAlg keyalg, pgpDigAlg sigalg,
     gcry_sexp_build(&sexp_sig, NULL,
                     "(sig-val (ecc (r %M) (s %M)))", rmpi, smpi);
     gcry_sexp_build(&sexp_data, NULL,
-                    "(data (flags raw) (value %b))", (int)hashlen, hash);
+                    "(data (value %b))", (int)hashlen, hash);
     gcry_sexp_build(&sexp_pkey, NULL,
                     "(public-key (ecc (curve \"1.2.643.2.2.35.1\") (q %M)))",
                     qmpi);
-    if (sexp_sig && sexp_data && sexp_pkey)
+    if (sexp_sig && sexp_data && sexp_pkey) {
         rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
+        rpmlog(RPMLOG_DEBUG, "gost_verify: verify rc=%d\n", rc);
+    }
 
     gcry_sexp_release(sexp_sig);
     gcry_sexp_release(sexp_data);
@@ -1316,6 +1318,24 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
     rpmDigestFinal(ctx, (void **)&hash, &hashlen, 0);
     ctx = NULL;
 
+    if (sig->is_gost) {
+        gcry_md_hd_t md;
+        if (gcry_md_open(&md, GCRY_MD_GOSTR3411_94, 0) == 0) {
+            rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: recalculating GOST digest\n");
+            gcry_md_write(md, hash, hashlen);
+            const unsigned char *gh = gcry_md_read(md, GCRY_MD_GOSTR3411_94);
+            free(hash);
+            hash = xmalloc(32);
+            memcpy(hash, gh, 32);
+            hashlen = 32;
+            char *hex = rpmhex(hash, hashlen);
+            rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: gost hash %s len=%zu\n", hex, hashlen);
+            free(hex);
+            gcry_md_close(md);
+        }
+    }
+
+	
     /* Compare leading 16 bits of digest for quick check. */
     if (hash == NULL || memcmp(hash, sig->signhash16, 2) != 0)
         goto exit;
