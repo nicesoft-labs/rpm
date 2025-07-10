@@ -493,6 +493,8 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     default:
         break;
     }
+    if (sig_gost)
+        pubkey_algo = PGPPUBKEYALGO_GOST3410_2001;
     pgpDigAlg sigalg = pgpSignatureNew(pubkey_algo, sig_gost);
 
     int rc = processMpis(sigalg->mpis, sigalg, p, pend);
@@ -695,8 +697,9 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
         curve = pgpCurveByOid(oid, len);
         oidstr = oid2str(oid, len, oidbuf, sizeof(oidbuf));
         p += len + 1;
-        if (is_gost_oid(oidstr))
+        if (is_gost_oid(oidstr)) {
             pubkey_algo = PGPPUBKEYALGO_GOST3410_2001;
+	}
     }
     pgpDigAlg keyalg = pgpPubkeyNew(pubkey_algo, curve, oidstr);
     rpmlog(RPMLOG_DEBUG,
@@ -713,7 +716,7 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
         }
     }
     rc = processMpis(keyalg->mpis, keyalg, p, pend);
-    if (rc == 0) {
+    if (rc == 0 || keyalg->is_gost) {
         keyp->pubkey_algo = pubkey_algo;
         keyp->alg = keyalg;
         keyp->is_gost = keyalg->is_gost;
@@ -1410,10 +1413,12 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
 
     if (sig->alg == NULL) {
         rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: missing sig->alg\n");
+        res = RPMRC_NOKEY;
         goto exit;
     }
     if (key && key->alg == NULL) {
         rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: missing key->alg\n");
+        res = RPMRC_NOKEY;
         goto exit;
     }
 
