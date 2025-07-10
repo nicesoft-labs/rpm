@@ -642,6 +642,8 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
     pgpDigAlg ka = xcalloc(1, sizeof(*ka));;
     ka->curve = curve;
     ka->is_gost = is_gost_curve(oid);
+    if (ka->is_gost && algo == PGPPUBKEYALGO_ECDSA)
+        algo = PGPPUBKEYALGO_GOST3410_2001;
 
     switch (algo) {
     case PGPPUBKEYALGO_RSA:
