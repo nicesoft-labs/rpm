@@ -642,9 +642,12 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
     pgpDigAlg ka = xcalloc(1, sizeof(*ka));;
     ka->curve = curve;
     ka->is_gost = is_gost_curve(oid);
-    if (ka->is_gost && algo == PGPPUBKEYALGO_ECDSA)
-        algo = PGPPUBKEYALGO_GOST3410_2001;
-
+    if (ka->is_gost && algo == PGPPUBKEYALGO_ECDSA) {
+        rpmlog(RPMLOG_DEBUG,
+               "pgpPubkeyNew: forcing GOST3410_2001 for curve OID %s\n",
+               oid ? oid : "");
+	algo = PGPPUBKEYALGO_GOST3410_2001;
+    }
     switch (algo) {
     case PGPPUBKEYALGO_RSA:
         ka->setmpi = pgpSetKeyMpiRSA;
@@ -661,11 +664,19 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
         ka->mpis = 4;
         break;
     case PGPPUBKEYALGO_ECDSA:
-        /* Treat GOST ECDSA keys like regular ECDSA */
-        ka->setmpi = pgpSetKeyMpiEDDSA;
-        ka->free   = pgpFreeKeyEDDSA;
-        ka->mpis   = 1;
-        ka->curve = curve;
+        if (ka->is_gost) {
+            rpmlog(RPMLOG_DEBUG,
+                   "pgpPubkeyNew: using DSA layout for GOST key OID %s\n",
+                   oid ? oid : "");
+            ka->setmpi = pgpSetKeyMpiDSA;
+            ka->free   = pgpFreeKeyDSA;
+            ka->mpis   = 4;
+        } else {
+            ka->setmpi = pgpSetKeyMpiEDDSA;
+            ka->free   = pgpFreeKeyEDDSA;
+            ka->mpis   = 1;
+            ka->curve = curve;
+        }
         break;
 #if PGPPUBKEYALGO_GOST3410_2001 != PGPPUBKEYALGO_ECDSA
     case PGPPUBKEYALGO_GOST3410_2001:
@@ -697,6 +708,14 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
         break;
     }
 
+    if (ka->is_gost && algo == PGPPUBKEYALGO_ECDSA && ka->mpis != 4) {
+        rpmlog(RPMLOG_DEBUG,
+               "pgpPubkeyNew: adjusting algorithm to GOST3410_2001\n");
+        ka->setmpi = pgpSetKeyMpiDSA;
+        ka->free = pgpFreeKeyDSA;
+        ka->mpis = 4;
+    }
+
     ka->verify = pgpVerifyNULL; /* keys can't be verified */
     rpmlog(RPMLOG_DEBUG,
            "pgpPubkeyNew: algo=%d curve_oid=%s is_gost=%d mpis=%d setmpi=%p free=%p\n",
@@ -709,6 +728,12 @@ pgpDigAlg pgpSignatureNew(int algo, int is_gost)
 {
     pgpDigAlg sa = xcalloc(1, sizeof(*sa));
     sa->is_gost = is_gost;
+
+    if (sa->is_gost && algo == PGPPUBKEYALGO_ECDSA) {
+        rpmlog(RPMLOG_DEBUG,
+               "pgpSignatureNew: forcing GOST3410_2001 signature\n");
+        algo = PGPPUBKEYALGO_GOST3410_2001;
+    }
 
 
     switch (algo) {
@@ -737,6 +762,9 @@ pgpDigAlg pgpSignatureNew(int algo, int is_gost)
         break;
 #endif
     case PGPPUBKEYALGO_ECDSA:
+        if (is_gost)
+            rpmlog(RPMLOG_DEBUG,
+                   "pgpSignatureNew: using GOST verification for ECDSA algo\n");
         sa->setmpi = pgpSetSigMpiDSA;
         sa->free = pgpFreeSigDSA;
         sa->verify = is_gost ? pgpVerifySigGOST2001 : pgpVerifySigECDSA;
@@ -759,6 +787,15 @@ pgpDigAlg pgpSignatureNew(int algo, int is_gost)
         sa->verify = pgpVerifyNULL;
         sa->mpis = -1;
         break;
+    }
+
+    if (sa->is_gost && algo == PGPPUBKEYALGO_ECDSA && sa->mpis != 2) {
+        rpmlog(RPMLOG_DEBUG,
+               "pgpSignatureNew: adjusting algorithm to GOST3410_2001\n");
+        sa->setmpi = pgpSetSigMpiDSA;
+        sa->free = pgpFreeSigDSA;
+        sa->verify = pgpVerifySigGOST2001;
+        sa->mpis = 2;
     }
     rpmlog(RPMLOG_DEBUG, "pgpSignatureNew: algo=%d is_gost=%d verify=%p\n",
            algo, is_gost, sa->verify);
