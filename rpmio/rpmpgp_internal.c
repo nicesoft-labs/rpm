@@ -496,9 +496,8 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
             p += len + 1;
             if (pubkey_algo == PGPPUBKEYALGO_GOST3410_2001 && is_gost_oid(oidstr)) {
                 sig_gost = 1;
-                pubkey_algo = PGPPUBKEYALGO_GOST3410_2001;
                 rpmlog(RPMLOG_DEBUG,
-                       "pgpPrtSigParams: forcing GOST3410_2001 for OID %s\n",
+                       "pgpPrtSigParams: detected GOST curve OID %s\n",
                        oidstr);
             }
         }
@@ -729,9 +728,8 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
         oidstr = oid2str(oid, len, oidbuf, sizeof(oidbuf));
         p += len + 1;
         if (is_gost_oid(oidstr)) {
-            pubkey_algo = PGPPUBKEYALGO_GOST3410_2001;
             rpmlog(RPMLOG_DEBUG,
-                   "pgpPrtPubkeyParams: forcing GOST3410_2001 for OID %s\n",
+                   "pgpPrtPubkeyParams: detected GOST curve OID %s\n",
                    oidstr);
         }
     }
