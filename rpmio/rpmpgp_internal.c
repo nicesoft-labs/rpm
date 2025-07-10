@@ -480,6 +480,29 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
 {
     const uint8_t * pend = h + hlen;
     int sig_gost = is_gost;
+    const uint8_t *oid = NULL;
+    int oidlen = 0;
+    char oidbuf[64];
+    const char *oidstr = NULL;
+
+    if (pubkey_algo == PGPPUBKEYALGO_EDDSA ||
+        pubkey_algo == PGPPUBKEYALGO_ECDSA ||
+        pubkey_algo == PGPPUBKEYALGO_GOST3410_2001) {
+        int len = (hlen > 1) ? p[0] : 0;
+        if (len > 0 && len != 0xff && len < hlen) {
+            oid = p + 1;
+            oidlen = len;
+            oidstr = oid2str(oid, len, oidbuf, sizeof(oidbuf));
+            p += len + 1;
+            if (is_gost_oid(oidstr)) {
+                sig_gost = 1;
+                pubkey_algo = PGPPUBKEYALGO_GOST3410_2001;
+                rpmlog(RPMLOG_DEBUG,
+                       "pgpPrtSigParams: forcing GOST3410_2001 for OID %s\n",
+                       oidstr);
+            }
+        }
+    }
     switch (pubkey_algo) {
     case PGPPUBKEYALGO_GOST3410_2001:
     case PGPPUBKEYALGO_GOST3410_2001_A:
@@ -495,6 +518,14 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     }
     if (sig_gost)
         pubkey_algo = PGPPUBKEYALGO_GOST3410_2001;
+    if (sig_gost && pend - p >= 2) {
+        size_t mpilen = pgpMpiLen(p);
+        if (mpilen > 2 && (p + mpilen) < pend &&
+            (int)(mpilen - 2) == oidlen &&
+            (oidlen == 0 || !memcmp(p + 2, oid, oidlen))) {
+            p += mpilen; /* skip OID MPI */
+        }
+    }
     pgpDigAlg sigalg = pgpSignatureNew(pubkey_algo, sig_gost);
 
     int rc = processMpis(sigalg->mpis, sigalg, p, pend);
@@ -503,7 +534,7 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
            pgpValStr(pgpPubkeyTbl, pubkey_algo), pubkey_algo, sig_gost, rc);
 	
     /* Always initialize signature algorithm on each pass */
-    if (rc == 0 && sigp->tag == PGPTAG_SIGNATURE) {
+    if ((rc == 0 || sig_gost) && sigp->tag == PGPTAG_SIGNATURE) {
         if (sigp->alg)
             pgpDigAlgFree(sigp->alg);
         sigp->alg = sigalg;
@@ -699,7 +730,10 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
         p += len + 1;
         if (is_gost_oid(oidstr)) {
             pubkey_algo = PGPPUBKEYALGO_GOST3410_2001;
-	}
+            rpmlog(RPMLOG_DEBUG,
+                   "pgpPrtPubkeyParams: forcing GOST3410_2001 for OID %s\n",
+                   oidstr);
+        }
     }
     pgpDigAlg keyalg = pgpPubkeyNew(pubkey_algo, curve, oidstr);
     rpmlog(RPMLOG_DEBUG,
