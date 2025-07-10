@@ -608,17 +608,29 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
     /* We can't handle more than one key at a time */
     if (keyp->alg)
 	return rc;
+    const uint8_t *oid = NULL;
+    int oidlen = 0;
     if (pubkey_algo == PGPPUBKEYALGO_EDDSA ||
         pubkey_algo == PGPPUBKEYALGO_ECDSA ||
         pubkey_algo == PGPPUBKEYALGO_GOST3410_2001) {
         int len = (hlen > 1) ? p[0] : 0;
         if (len == 0 || len == 0xff || len >= hlen)
             return rc;
-        curve = pgpCurveByOid(p + 1, len);
-        oidstr = oid2str(p + 1, len, oidbuf, sizeof(oidbuf));
+        oid = p + 1;
+        oidlen = len;
+        curve = pgpCurveByOid(oid, len);
+        oidstr = oid2str(oid, len, oidbuf, sizeof(oidbuf));
         p += len + 1;
     }
     pgpDigAlg keyalg = pgpPubkeyNew(pubkey_algo, curve, oidstr);
+    if (keyalg->is_gost && pend - p >= 2) {
+        size_t mpilen = pgpMpiLen(p);
+        if (mpilen > 2 && (p + mpilen) < pend &&
+            (int)(mpilen - 2) == oidlen &&
+            (oidlen == 0 || !memcmp(p + 2, oid, oidlen))) {
+            p += mpilen; /* skip OID MPI */
+        }
+    }
     rc = processMpis(keyalg->mpis, keyalg, p, pend);
     if (rc == 0) {
 	keyp->pubkey_algo = pubkey_algo;
