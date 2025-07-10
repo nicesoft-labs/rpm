@@ -444,6 +444,37 @@ static int pgpVerifySigGOST2012(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
     return rc;
 }
 
+static int pgpVerifySigGOSTEC(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
+                              uint8_t *hash, size_t hashlen, int hash_algo)
+{
+    struct pgpDigKeyEDDSA_s *key = pgpkey->data;
+    struct pgpDigSigDSA_s *sig = pgpsig->data;
+    gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
+    int rc = 1;
+
+    if (!key || !sig || !key->q || !sig->r || !sig->s)
+        return rc;
+
+    gcry_sexp_build(&sexp_sig, NULL,
+                    "(sig-val (ecc (r %M) (s %M)))",
+                    sig->r, sig->s);
+    gcry_sexp_build(&sexp_data, NULL,
+                    "(data (flags raw) (value %b))",
+                    (int)hashlen, (const char *)hash);
+    gcry_sexp_build(&sexp_pkey, NULL,
+                    "(public-key (ecc (curve \"GOST2001-CryptoPro-A\") (q %M)))",
+                    key->q);
+
+    if (sexp_sig && sexp_data && sexp_pkey)
+        rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
+
+    gcry_sexp_release(sexp_sig);
+    gcry_sexp_release(sexp_data);
+    gcry_sexp_release(sexp_pkey);
+    return rc;
+}
+
+
 static const char *pgpCurveName(int curve)
 {
     switch (curve) {
@@ -695,6 +726,11 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
     }
 
     ka->verify = pgpVerifyNULL; /* keys can't be verified */
+    if (ka->is_gost && algo == PGPPUBKEYALGO_ECDSA) {
+        ka->setmpi = pgpSetKeyMpiEDDSA;
+        ka->verify = pgpVerifySigGOSTEC;
+        ka->mpis = 1;
+    }
     rpmlog(RPMLOG_DEBUG,
            "pgpPubkeyNew: algo=%d curve_oid=%s is_gost=%d mpis=%d setmpi=%p free=%p\n",
            algo, oid ? oid : "", ka->is_gost,
@@ -745,7 +781,7 @@ pgpDigAlg pgpSignatureNew(int algo, int is_gost)
                    "pgpSignatureNew: using GOST verification for ECDSA algo\n");
         sa->setmpi = pgpSetSigMpiDSA;
         sa->free = pgpFreeSigDSA;
-        sa->verify = is_gost ? pgpVerifySigGOST2001 : pgpVerifySigECDSA;
+        sa->verify = is_gost ? pgpVerifySigGOSTEC : pgpVerifySigECDSA;
         sa->mpis = 2;
         break;
     case PGPPUBKEYALGO_GOST3410_2012_256:
