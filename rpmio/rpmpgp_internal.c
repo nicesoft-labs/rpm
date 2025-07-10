@@ -750,15 +750,15 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
         }
     }
     rc = processMpis(keyalg->mpis, keyalg, p, pend);
-    if (rc != 0 && keyalg->is_gost) {
-        rpmlog(RPMLOG_DEBUG,
-               "pgpPrtPubkeyParams: failed to process MPI for GOST key\n");
-    }
     if (rc == 0) {
         keyp->pubkey_algo = pubkey_algo;
         keyp->alg = keyalg;
         keyp->is_gost = keyalg->is_gost;
     } else {
+        if (keyalg->is_gost) {
+            rpmlog(RPMLOG_DEBUG,
+                   "pgpPrtPubkeyParams: failed to process MPI for GOST key\n");
+        }
         pgpDigAlgFree(keyalg);
     }
     return rc;
