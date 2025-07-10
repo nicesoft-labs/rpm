@@ -4,6 +4,7 @@
 
 #include <rpm/rpmstring.h>
 #include <rpm/rpmpgp.h>
+#include "rpmpgpval.h"
 #include <rpm/rpmfileutil.h>
 #include <rpm/rpmlog.h>
 #include <rpm/rpmkeyring.h>
@@ -236,6 +237,7 @@ pgpDigParams rpmPubkeyPgpDigParams(rpmPubkey key)
     }
     return params;
 }
+
 pgpDigParams rpmKeyringLookupBySignID(rpmKeyring keyring, const uint8_t *signid)
 {
     pgpDigParams params = NULL;
@@ -305,8 +307,8 @@ rpmRC rpmKeyringVerifySig(rpmKeyring keyring, pgpDigParams sig, DIGEST_CTX ctx)
                        pgpValStr(pgpPubkeyTbl,
                                 pgpDigParamsAlgo(pgpkey, PGPVAL_PUBKEYALGO)));
                 free(kid);
-                if (sig->is_gost == 0 && pgpkey->alg && pgpkey->alg->is_gost)
-                    sig->is_gost = 1;
+                if (!pgpDigParamsIsGost(sig) && pgpDigParamsIsGost(pgpkey))
+                    pgpDigParamsSetIsGost(sig, 1);
             }
         }
 
