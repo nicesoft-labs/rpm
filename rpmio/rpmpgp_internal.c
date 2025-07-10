@@ -462,8 +462,10 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
            "pgpPrtSigParams: pubkey_algo=%s(%u) is_gost=%d rc=%d\n",
            pgpValStr(pgpPubkeyTbl, pubkey_algo), pubkey_algo, is_gost, rc);
 	
-    /* We can't handle more than one sig at a time */
-    if (rc == 0 && sigp->alg == NULL && sigp->tag == PGPTAG_SIGNATURE) {
+    /* Always initialize signature algorithm on each pass */
+    if (rc == 0 && sigp->tag == PGPTAG_SIGNATURE) {
+        if (sigp->alg)
+            pgpDigAlgFree(sigp->alg);
         sigp->alg = sigalg;
         sigp->is_gost = is_gost;
     } else {
@@ -1363,7 +1365,16 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
            pgpValStr(pgpHashTbl, sig->hash_algo), sig->hash_algo);
 
     if (sig->tag != PGPTAG_SIGNATURE)
-	goto exit;
+        goto exit;
+
+    if (sig->alg == NULL) {
+        rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: missing sig->alg\n");
+        goto exit;
+    }
+    if (key && key->alg == NULL) {
+        rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: missing key->alg\n");
+        goto exit;
+    }
 
     if (sig->hash != NULL)
 	rpmDigestUpdate(ctx, sig->hash, sig->hashlen);
