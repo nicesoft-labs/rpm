@@ -486,7 +486,7 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     const char *oidstr = NULL;
 
     if (pubkey_algo == PGPPUBKEYALGO_EDDSA ||
-        pubkey_algo == PGPPUBKEYALGO_ECDSA ||
+        /* GOST-2001 подписи могут начинаться с OID-заголовка */
         pubkey_algo == PGPPUBKEYALGO_GOST3410_2001) {
         int len = (hlen > 1) ? p[0] : 0;
         if (len > 0 && len != 0xff && len < hlen) {
@@ -494,7 +494,7 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
             oidlen = len;
             oidstr = oid2str(oid, len, oidbuf, sizeof(oidbuf));
             p += len + 1;
-            if (is_gost_oid(oidstr)) {
+            if (pubkey_algo == PGPPUBKEYALGO_GOST3410_2001 && is_gost_oid(oidstr)) {
                 sig_gost = 1;
                 pubkey_algo = PGPPUBKEYALGO_GOST3410_2001;
                 rpmlog(RPMLOG_DEBUG,
