@@ -1414,16 +1414,23 @@ static int gost_verify(pgpDigAlg keyalg, pgpDigAlg sigalg,
     if (!key || !sig || !key->q || !sig->r || !sig->s)
         return rc;
 
-    gcry_mpi_scan(&qmpi, GCRYMPI_FMT_USG, key->q, key->qlen, NULL);
+    if (gcry_mpi_scan(&qmpi, GCRYMPI_FMT_USG, key->q, key->qlen, NULL))
+        goto exit;
     size_t rlen = BN_num_bytes(sig->r);
     unsigned char *rbuf = xmalloc(rlen);
     BN_bn2bin(sig->r, rbuf);
-    gcry_mpi_scan(&rmpi, GCRYMPI_FMT_USG, rbuf, rlen, NULL);
+    if (gcry_mpi_scan(&rmpi, GCRYMPI_FMT_USG, rbuf, rlen, NULL)) {
+        free(rbuf);
+        goto exit;
+    }
     free(rbuf);
     size_t slen = BN_num_bytes(sig->s);
     unsigned char *sbuf = xmalloc(slen);
     BN_bn2bin(sig->s, sbuf);
-    gcry_mpi_scan(&smpi, GCRYMPI_FMT_USG, sbuf, slen, NULL);
+    if (gcry_mpi_scan(&smpi, GCRYMPI_FMT_USG, sbuf, slen, NULL)) {
+        free(sbuf);
+        goto exit;
+    }
     free(sbuf);
 #else
     struct pgpDigKeyEDDSA_s {
@@ -1445,13 +1452,15 @@ static int gost_verify(pgpDigAlg keyalg, pgpDigAlg sigalg,
         return rc;
 #endif
 
-    gcry_sexp_build(&sexp_sig, NULL,
-                    "(sig-val (ecc (r %M) (s %M)))", rmpi, smpi);
-    gcry_sexp_build(&sexp_data, NULL,
-                    "(data (value %b))", (int)hashlen, hash);
-    gcry_sexp_build(&sexp_pkey, NULL,
-                    "(public-key (ecc (curve \"1.2.643.2.2.35.1\") (q %M)))",
-                    qmpi);
+    if (gcry_sexp_build(&sexp_sig, NULL,
+                        "(sig-val (ecc (r %M) (s %M)))", rmpi, smpi) ||
+        gcry_sexp_build(&sexp_data, NULL,
+                        "(data (value %b))", (int)hashlen, hash) ||
+        gcry_sexp_build(&sexp_pkey, NULL,
+                        "(public-key (ecc (curve \"1.2.643.2.2.35.1\") (q %M)))",
+                        qmpi))
+        goto exit;
+
     if (sexp_sig && sexp_data && sexp_pkey) {
         char *hex = rpmhex(hash, hashlen);
         char *qhex = mpi2hex(qmpi);
@@ -1465,7 +1474,7 @@ static int gost_verify(pgpDigAlg keyalg, pgpDigAlg sigalg,
         rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
         rpmlog(RPMLOG_DEBUG, "gost_verify: verify rc=%d\n", rc);
     }
-
+exit:
     gcry_sexp_release(sexp_sig);
     gcry_sexp_release(sexp_data);
     gcry_sexp_release(sexp_pkey);
