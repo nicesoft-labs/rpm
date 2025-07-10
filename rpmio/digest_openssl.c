@@ -740,7 +740,7 @@ static int pgpSetKeyMpiEDDSA(pgpDigAlg pgpkey, int num, const uint8_t *p)
 
     if (!key)
 	key = pgpkey->data = xcalloc(1, sizeof(*key));
-    if (num == 0 && !key->q && mlen > 1 && p[2] == 0x40) {
+    if (num == 0 && !key->q && mlen > 1 && (p[2] == 0x40 || p[2] == 0x04)) {
 	key->qlen = mlen - 1;
 	key->q = xmalloc(key->qlen);
 	memcpy(key->q, p + 3, key->qlen),
@@ -839,7 +839,7 @@ static int pgpSetKeyMpiGOST(pgpDigAlg pgpkey, int num, const uint8_t *p)
 
     if (!key)
         key = pgpkey->data = xcalloc(1, sizeof(*key));
-    if (num == 0 && !key->q && mlen > 1 && p[2] == 0x40) {
+    if (num == 0 && !key->q && mlen > 1 && (p[2] == 0x40 || p[2] == 0x04)) {
         key->qlen = mlen - 1;
         key->q = xmalloc(key->qlen);
         memcpy(key->q, p + 3, key->qlen);
