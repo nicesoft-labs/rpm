@@ -101,6 +101,8 @@ char * rpmPubkeyBase64(rpmPubkey key);
  */
 pgpDigParams rpmPubkeyPgpDigParams(rpmPubkey key);
 
+pgpDigParams rpmKeyringLookupBySignID(rpmKeyring keyring, const uint8_t *signid);
+
 #ifdef __cplusplus
 }
 #endif
