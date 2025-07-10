@@ -549,107 +549,149 @@ static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
                      pgpDigParams _digp, int is_gost)
 {
     uint8_t version = 0;
-    const uint8_t * p;
+    const uint8_t *p;
     size_t plen;
     int rc = 1;
 
+    rpmlog(RPMLOG_DEBUG, "pgpPrtSig: ENTER tag=%d hlen=%zu is_gost=%d\n",
+           tag, hlen, is_gost);
+
     /* Reset the saved flags and previous algorithm */
     if (_digp->alg) {
+        rpmlog(RPMLOG_DEBUG, "pgpPrtSig: Freeing previous alg\n");
         pgpDigAlgFree(_digp->alg);
         _digp->alg = NULL;
     }
     _digp->saved &= PGPDIG_SAVED_TIME | PGPDIG_SAVED_ID;
     _digp->key_flags = 0;
 
-    if (pgpVersion(h, hlen, &version))
-	return rc;
+    if (pgpVersion(h, hlen, &version)) {
+        rpmlog(RPMLOG_DEBUG, "pgpPrtSig: Could not get version\n");
+        return rc;
+    }
+
+    rpmlog(RPMLOG_DEBUG, "pgpPrtSig: version=%d\n", version);
 
     switch (version) {
     case 3:
-    {   pgpPktSigV3 v = (pgpPktSigV3)h;
+    {
+        pgpPktSigV3 v = (pgpPktSigV3)h;
 
-	if (hlen <= sizeof(*v) || v->hashlen != 5)
-	    return 1;
+        if (hlen <= sizeof(*v) || v->hashlen != 5) {
+            rpmlog(RPMLOG_ERR, "pgpPrtSig: V3 length/hashlen check failed\n");
+            return 1;
+        }
 
-	pgpPrtVal("V3 ", pgpTagTbl, tag);
-	pgpPrtVal(" ", pgpPubkeyTbl, v->pubkey_algo);
-	pgpPrtVal(" ", pgpHashTbl, v->hash_algo);
-	pgpPrtVal(" ", pgpSigTypeTbl, v->sigtype);
-	pgpPrtNL();
-	pgpPrtTime(" ", v->time, sizeof(v->time));
-	pgpPrtNL();
-	pgpPrtHex(" signer keyid", v->signid, sizeof(v->signid));
-	plen = pgpGrab(v->signhash16, sizeof(v->signhash16));
-	pgpPrtHex(" signhash16", v->signhash16, sizeof(v->signhash16));
-	pgpPrtNL();
+        pgpPrtVal("V3 ", pgpTagTbl, tag);
+        pgpPrtVal(" ", pgpPubkeyTbl, v->pubkey_algo);
+        pgpPrtVal(" ", pgpHashTbl, v->hash_algo);
+        pgpPrtVal(" ", pgpSigTypeTbl, v->sigtype);
+        pgpPrtNL();
+        pgpPrtTime(" ", v->time, sizeof(v->time));
+        pgpPrtNL();
+        pgpPrtHex(" signer keyid", v->signid, sizeof(v->signid));
+        plen = pgpGrab(v->signhash16, sizeof(v->signhash16));
+        pgpPrtHex(" signhash16", v->signhash16, sizeof(v->signhash16));
+        pgpPrtNL();
 
         _digp->version = v->version;
         _digp->hashlen = v->hashlen;
         _digp->sigtype = v->sigtype;
+
         free(_digp->hash);
         _digp->hash = memcpy(xmalloc(v->hashlen), &v->sigtype, v->hashlen);
+
         if (!(_digp->saved & PGPDIG_SAVED_TIME))
             _digp->time = pgpGrab(v->time, sizeof(v->time));
         if (!(_digp->saved & PGPDIG_SAVED_ID))
-            memcpy(_digp->signid, v->signid, sizeof(_digp->signid));
+            memcpy(_digp->signid, v->signid, sizeof(v->signid));
+
         _digp->saved = PGPDIG_SAVED_TIME | PGPDIG_SIG_HAS_CREATION_TIME | PGPDIG_SAVED_ID;
         _digp->pubkey_algo = v->pubkey_algo;
         _digp->hash_algo = v->hash_algo;
         memcpy(_digp->signhash16, v->signhash16, sizeof(_digp->signhash16));
 
+        rpmlog(RPMLOG_DEBUG, "pgpPrtSig: V3 sigtype=%d pubkey_algo=%d hash_algo=%d\n",
+               _digp->sigtype, _digp->pubkey_algo, _digp->hash_algo);
+
         p = ((uint8_t *)v) + sizeof(*v);
-        /* Propagate is_gost from caller so signature algorithm is initialized
-         * correctly for GOST curves */
+
+        rpmlog(RPMLOG_DEBUG, "pgpPrtSig: calling pgpPrtSigParams for V3, is_gost=%d\n", is_gost);
+
         rc = tag ? pgpPrtSigParams(tag, v->pubkey_algo, p, h, hlen, _digp,
                                    is_gost) : 0;
-    }	break;
+
+        rpmlog(RPMLOG_DEBUG, "pgpPrtSig: V3 rc=%d\n", rc);
+    }
+    break;
+
     case 4:
-    {   pgpPktSigV4 v = (pgpPktSigV4)h;
-	const uint8_t *const hend = h + hlen;
+    {
+        pgpPktSigV4 v = (pgpPktSigV4)h;
+        const uint8_t *const hend = h + hlen;
 
-	if (hlen <= sizeof(*v))
-	    return 1;
+        if (hlen <= sizeof(*v)) {
+            rpmlog(RPMLOG_ERR, "pgpPrtSig: V4 length check failed\n");
+            return 1;
+        }
 
-	pgpPrtVal("V4 ", pgpTagTbl, tag);
-	pgpPrtVal(" ", pgpPubkeyTbl, v->pubkey_algo);
-	pgpPrtVal(" ", pgpHashTbl, v->hash_algo);
-	pgpPrtVal(" ", pgpSigTypeTbl, v->sigtype);
-	pgpPrtNL();
+        pgpPrtVal("V4 ", pgpTagTbl, tag);
+        pgpPrtVal(" ", pgpPubkeyTbl, v->pubkey_algo);
+        pgpPrtVal(" ", pgpHashTbl, v->hash_algo);
+        pgpPrtVal(" ", pgpSigTypeTbl, v->sigtype);
+        pgpPrtNL();
 
-	p = &v->hashlen[0];
-	if (pgpGet(v->hashlen, sizeof(v->hashlen), hend, &plen))
-	    return 1;
-	p += sizeof(v->hashlen);
+        p = &v->hashlen[0];
+        if (pgpGet(v->hashlen, sizeof(v->hashlen), hend, &plen)) {
+            rpmlog(RPMLOG_ERR, "pgpPrtSig: V4 pgpGet failed at hashlen\n");
+            return 1;
+        }
+        p += sizeof(v->hashlen);
 
-	if ((p + plen) > hend)
-	    return 1;
+        if ((p + plen) > hend) {
+            rpmlog(RPMLOG_ERR, "pgpPrtSig: V4 plen overflow\n");
+            return 1;
+        }
 
         _digp->hashlen = sizeof(*v) + plen;
         free(_digp->hash);
         _digp->hash = memcpy(xmalloc(_digp->hashlen), v, _digp->hashlen);
-     
-	if (pgpPrtSubType(p, plen, v->sigtype, _digp, 1))
-	    return 1;
-	p += plen;
 
-	if (!(_digp->saved & PGPDIG_SIG_HAS_CREATION_TIME))
-	    return 1; /* RFC 4880 §5.2.3.4 creation time MUST be hashed */
+        if (pgpPrtSubType(p, plen, v->sigtype, _digp, 1)) {
+            rpmlog(RPMLOG_ERR, "pgpPrtSig: V4 pgpPrtSubType hashed failed\n");
+            return 1;
+        }
+        p += plen;
 
-	if (pgpGet(p, 2, hend, &plen))
-	    return 1;
-	p += 2;
+        if (!(_digp->saved & PGPDIG_SIG_HAS_CREATION_TIME)) {
+            rpmlog(RPMLOG_ERR, "pgpPrtSig: V4 missing creation time\n");
+            return 1;
+        }
 
-	if ((p + plen) > hend)
-	    return 1;
+        if (pgpGet(p, 2, hend, &plen)) {
+            rpmlog(RPMLOG_ERR, "pgpPrtSig: V4 pgpGet failed at signhash16\n");
+            return 1;
+        }
+        p += 2;
 
-	if (pgpPrtSubType(p, plen, v->sigtype, _digp, 0))
-	    return 1;
-	p += plen;
+        if ((p + plen) > hend) {
+            rpmlog(RPMLOG_ERR, "pgpPrtSig: V4 plen overflow at signhash16\n");
+            return 1;
+        }
 
-	if (h + hlen - p < 2)
-	    return 1;
-	pgpPrtHex(" signhash16", p, 2);
-	pgpPrtNL();
+        if (pgpPrtSubType(p, plen, v->sigtype, _digp, 0)) {
+            rpmlog(RPMLOG_ERR, "pgpPrtSig: V4 pgpPrtSubType unhashed failed\n");
+            return 1;
+        }
+        p += plen;
+
+        if (h + hlen - p < 2) {
+            rpmlog(RPMLOG_ERR, "pgpPrtSig: V4 insufficient data for signhash16\n");
+            return 1;
+        }
+
+        pgpPrtHex(" signhash16", p, 2);
+        pgpPrtNL();
 
         _digp->version = v->version;
         _digp->sigtype = v->sigtype;
@@ -657,20 +699,27 @@ static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
         _digp->hash_algo = v->hash_algo;
         memcpy(_digp->signhash16, p, sizeof(_digp->signhash16));
 
-	p += 2;
-	if (p > hend)
-	    return 1;
+        p += 2;
 
-        /* Use caller is_gost when creating signature algorithm */
+        rpmlog(RPMLOG_DEBUG,
+               "pgpPrtSig: V4 sigtype=%d pubkey_algo=%d hash_algo=%d is_gost=%d\n",
+               _digp->sigtype, _digp->pubkey_algo, _digp->hash_algo, is_gost);
+
         rc = tag ? pgpPrtSigParams(tag, v->pubkey_algo, p, h, hlen, _digp,
                                    is_gost) : 0;
-    }	break;
+
+        rpmlog(RPMLOG_DEBUG, "pgpPrtSig: V4 rc=%d\n", rc);
+    }
+    break;
+
     default:
         rpmlog(RPMLOG_WARNING, _("Unsupported version of signature: V%d\n"), version);
         rc = 1;
         break;
     }
-    rpmlog(RPMLOG_DEBUG, "pgpPrtSig: is_gost=%d rc=%d\n", is_gost, rc);
+
+    rpmlog(RPMLOG_DEBUG, "pgpPrtSig: FINAL is_gost=%d rc=%d\n", is_gost, rc);
+
     return rc;
 }
 
