@@ -47,6 +47,19 @@ static const char *oid2str(const uint8_t *oid, int len, char *buf, size_t buflen
     return buf;
 }
 
+static char *mpi2hex(gcry_mpi_t mpi)
+{
+    char *hex = NULL;
+    if (mpi) {
+        size_t n = (gcry_mpi_get_nbits(mpi) + 7) / 8;
+        unsigned char *buf = xmalloc(n);
+        if (gcry_mpi_print(GCRYMPI_FMT_USG, buf, n, NULL, mpi) == 0)
+            hex = rpmhex(buf, n);
+        free(buf);
+    }
+    return hex;
+}
+
 /** \ingroup rpmio
  * Values parsed from OpenPGP signature/pubkey packet(s).
  */
@@ -445,7 +458,10 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     pgpDigAlg sigalg = pgpSignatureNew(pubkey_algo, is_gost);
 
     int rc = processMpis(sigalg->mpis, sigalg, p, pend);
-
+    rpmlog(RPMLOG_DEBUG,
+           "pgpPrtSigParams: pubkey_algo=%s(%u) is_gost=%d rc=%d\n",
+           pgpValStr(pgpPubkeyTbl, pubkey_algo), pubkey_algo, is_gost, rc);
+	
     /* We can't handle more than one sig at a time */
     if (rc == 0 && sigp->alg == NULL && sigp->tag == PGPTAG_SIGNATURE) {
         sigp->alg = sigalg;
@@ -572,10 +588,11 @@ static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
         rc = tag ? pgpPrtSigParams(tag, v->pubkey_algo, p, h, hlen, _digp, 0) : 0;
     }	break;
     default:
-	rpmlog(RPMLOG_WARNING, _("Unsupported version of signature: V%d\n"), version);
-	rc = 1;
-	break;
+        rpmlog(RPMLOG_WARNING, _("Unsupported version of signature: V%d\n"), version);
+        rc = 1;
+        break;
     }
+    rpmlog(RPMLOG_DEBUG, "pgpPrtSig: is_gost=%d rc=%d\n", is_gost, rc);
     return rc;
 }
 
@@ -634,6 +651,11 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
         p += len + 1;
     }
     pgpDigAlg keyalg = pgpPubkeyNew(pubkey_algo, curve, oidstr);
+    rpmlog(RPMLOG_DEBUG,
+           "pgpPrtPubkeyParams: pubkey_algo=%s(%u) oid=%s is_gost=%d\n",
+           pgpValStr(pgpPubkeyTbl, pubkey_algo), pubkey_algo,
+           oidstr ? oidstr : "", keyalg->is_gost);
+
     if (keyalg->is_gost && pend - p >= 2) {
         size_t mpilen = pgpMpiLen(p);
         if (mpilen > 2 && (p + mpilen) < pend &&
@@ -687,8 +709,9 @@ static int pgpPrtKey(pgpTag tag, const uint8_t *h, size_t hlen,
 	}
     }	break;
     default:
-	rpmlog(RPMLOG_WARNING, _("Unsupported version of key: V%d\n"), h[0]);
+        rpmlog(RPMLOG_WARNING, _("Unsupported version of key: V%d\n"), h[0]);
     }
+    rpmlog(RPMLOG_DEBUG, "pgpPrtKey: is_gost=%d rc=%d\n", _digp->is_gost, rc);
     return rc;
 }
 
@@ -1267,6 +1290,15 @@ static int gost_verify(pgpDigAlg keyalg, pgpDigAlg sigalg,
                     "(public-key (ecc (curve \"1.2.643.2.2.35.1\") (q %M)))",
                     qmpi);
     if (sexp_sig && sexp_data && sexp_pkey) {
+        char *hex = rpmhex(hash, hashlen);
+        char *qhex = mpi2hex(qmpi);
+        char *rhex = mpi2hex(rmpi);
+        char *shex = mpi2hex(smpi);
+        rpmlog(RPMLOG_DEBUG,
+               "gost_verify: curve=1.2.643.2.2.35.1 hash=%s q=%s r=%s s=%s\n",
+               hex ? hex : "", qhex ? qhex : "", rhex ? rhex : "",
+               shex ? shex : "");
+        free(hex); free(qhex); free(rhex); free(shex);
         rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
         rpmlog(RPMLOG_DEBUG, "gost_verify: verify rc=%d\n", rc);
     }
@@ -1293,7 +1325,12 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
 
     if (sig == NULL || ctx == NULL)
         goto exit;
-
+	
+    if (sig->is_gost == 0 && key && key->alg && key->alg->is_gost)
+        sig->is_gost = 1;
+    rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: effective is_gost=%d\n",
+           sig->is_gost);
+	
     rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: pubkey_algo=%s(%u) hash_algo=%s(%u)\n",
            pgpValStr(pgpPubkeyTbl, sig->pubkey_algo), sig->pubkey_algo,
            pgpValStr(pgpHashTbl, sig->hash_algo), sig->hash_algo);
@@ -1339,11 +1376,6 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
     /* Compare leading 16 bits of digest for quick check. */
     if (hash == NULL || memcmp(hash, sig->signhash16, 2) != 0)
         goto exit;
-
-    /* ГОСТ linkage: if key is GOST, propagate to sig */
-    if (sig->is_gost == 0 && key && key->alg && key->alg->is_gost) {
-        sig->is_gost = 1;
-    }
 
     if (sig->is_gost && key && key->alg && sig->alg) {
         int vrc = gost_verify(key->alg, sig->alg, hash, hashlen);
