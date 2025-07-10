@@ -533,14 +533,14 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
            pgpValStr(pgpPubkeyTbl, pubkey_algo), pubkey_algo, sig_gost, rc);
 	
     /* Always initialize signature algorithm on each pass */
-    if ((rc == 0 || sig_gost) && sigp->tag == PGPTAG_SIGNATURE) {
-        if (sigp->alg)
-            pgpDigAlgFree(sigp->alg);
-        sigp->alg = sigalg;
-        sigp->is_gost = sig_gost;
-    } else {
-        pgpDigAlgFree(sigalg);
-    }
+    if (sigp->tag == PGPTAG_SIGNATURE) {
+        if (rc == 0) {
+            if (sigp->alg)
+                pgpDigAlgFree(sigp->alg);
+            sigp->alg = sigalg;
+        } else {
+            pgpDigAlgFree(sigalg);
+        }
 
     return rc;
 }
