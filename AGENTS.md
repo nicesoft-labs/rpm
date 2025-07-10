@@ -102,3 +102,5 @@ BQJoY9tsAhsMAAoJEG2o0V0LJee/scoA/1Yw18xxA3LOD4N3BnxqgXVCwdpCJPmn
 
 # и попытайся его импортировать. 
 rpm -vvvvv --import /root/stan01-key.asc
+
+# rpm работает с ГОСТ через libgcrypt а не через openssl
