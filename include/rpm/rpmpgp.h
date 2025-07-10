@@ -1197,6 +1197,9 @@ int pgpDigParamsVersion(pgpDigParams digp);
  */
 uint32_t pgpDigParamsCreationTime(pgpDigParams digp);
 
+int pgpDigParamsIsGost(pgpDigParams digp);
+void pgpDigParamsSetIsGost(pgpDigParams digp, int is_gost);
+
 /** \ingroup rpmpgp
  * Destroy parsed OpenPGP packet parameter(s).
  * @param digp		parameter container
