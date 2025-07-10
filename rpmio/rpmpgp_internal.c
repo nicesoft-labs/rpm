@@ -541,7 +541,10 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
         } else {
             pgpDigAlgFree(sigalg);
         }
-
+        sigp->is_gost = sig_gost;
+    } else {
+        pgpDigAlgFree(sigalg);
+    }
     return rc;
 }
 
