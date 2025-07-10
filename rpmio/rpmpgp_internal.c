@@ -456,21 +456,26 @@ pgpDigAlg pgpDigAlgFree(pgpDigAlg alg)
 }
 
 static int processMpis(const int mpis, pgpDigAlg sigalg,
-		       const uint8_t *p, const uint8_t *const pend)
+                       const uint8_t **pp, const uint8_t *const pend)
 {
+    const uint8_t *p = *pp;
+
     int i = 0, rc = 1; /* assume failure */
     for (; i < mpis && pend - p >= 2; i++) {
-	unsigned int mpil = pgpMpiLen(p);
-	if (pend - p < mpil)
-	    return rc;
-	if (sigalg && sigalg->setmpi(sigalg, i, p))
-	    return rc;
-	p += mpil;
+        unsigned int mpil = pgpMpiLen(p);
+        if (pend - p < mpil) {
+            break;
+        }
+        if (sigalg && sigalg->setmpi(sigalg, i, p)) {
+            break;
+        }
+        p += mpil;
     }
+    *pp = p;
 
     /* Does the size and number of MPI's match our expectations? */
     if (p == pend && i == mpis)
-	rc = 0;
+        rc = 0;
     return rc;
 }
 
@@ -502,6 +507,7 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
             }
         }
     }
+    uint8_t orig_algo = pubkey_algo;
     switch (pubkey_algo) {
     case PGPPUBKEYALGO_GOST3410_2001:
     case PGPPUBKEYALGO_GOST3410_2001_A:
@@ -528,10 +534,16 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     pgpDigAlg sigalg = pgpSignatureNew(pubkey_algo, sig_gost);
 
     int rc = processMpis(sigalg->mpis, sigalg, p, pend);
+    const uint8_t *cur = p;
+    int rc = processMpis(sigalg->mpis, sigalg, &cur, pend);
     rpmlog(RPMLOG_DEBUG,
            "pgpPrtSigParams: pubkey_algo=%s(%u) is_gost=%d rc=%d\n",
            pgpValStr(pgpPubkeyTbl, pubkey_algo), pubkey_algo, sig_gost, rc);
-	
+    if (rc != 0) {
+        rpmlog(RPMLOG_DEBUG,
+               "pgpPrtSigParams: parse error tag=%u algo=%u offset=%td\n",
+               tag, orig_algo, cur - h);
+    }
     /* Always initialize signature algorithm on each pass */
     if (sigp->tag == PGPTAG_SIGNATURE) {
         if (rc == 0) {
@@ -799,7 +811,8 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
             p += mpilen; /* skip OID MPI */
         }
     }
-    rc = processMpis(keyalg->mpis, keyalg, p, pend);
+    const uint8_t *kcur = p;
+    rc = processMpis(keyalg->mpis, keyalg, &kcur, pend);
     if (rc == 0) {
         keyp->pubkey_algo = pubkey_algo;
         keyp->alg = keyalg;
@@ -926,7 +939,8 @@ static int getPubkeyFingerprint(const uint8_t *h, size_t hlen,
         rpmlog(RPMLOG_DEBUG, "getPubkeyFingerprint: mpis=%d\n", mpis);
 
 	/* Does the size and number of MPI's match our expectations? */
-	if (processMpis(mpis, NULL, se, pend) == 0) {
+        const uint8_t *fcur = se;
+        if (processMpis(mpis, NULL, &fcur, pend) == 0) {
 	    DIGEST_CTX ctx = rpmDigestInit(RPM_HASH_SHA1, RPMDIGEST_NONE);
 	    uint8_t *d = NULL;
 	    size_t dlen = 0;
