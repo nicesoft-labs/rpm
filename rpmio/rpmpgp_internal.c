@@ -750,7 +750,6 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
         }
     }
     rc = processMpis(keyalg->mpis, keyalg, p, pend);
-    rc = processMpis(keyalg->mpis, keyalg, p, pend);
     if (rc != 0 && keyalg->is_gost) {
         rpmlog(RPMLOG_DEBUG,
                "pgpPrtPubkeyParams: failed to process MPI for GOST key\n");
