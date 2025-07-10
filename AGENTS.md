@@ -35,7 +35,31 @@ sudo apt-get install -y build-essential cmake pkg-config bison flex libpopt-dev 
   file ghostscript swig doxygen graphviz libz-dev libldap2-dev \
   libgnutls28-dev libcurl4-gnutls-dev libreadline-dev librsvg2-bin \
   libusb-1.0-0-dev libgpg-error-dev libassuan-dev libgcrypt20-dev \
-  libksba-dev libnpth0-dev
+  libksba-dev libnpth0-dev autoconf automake libtool gettext bison texinfo \
+  gcc make libgpg-error-dev libgcrypt20-dev
+  
+# Клонировать репозиторий libksba с поддержкой ГОСТ
+git clone https://github.com/nicesoft-labs/libksba.git
+cd libksba
+git checkout master
+
+# Сборка и установка
+./autogen.sh --force
+./configure --enable-maintainer-mode
+make -j$(nproc)
+sudo make install
+
+# Клонировать репозиторий GnuPG с поддержкой ГОСТ
+git clone https://github.com/nicesoft-labs/gnupg.git
+cd gnupg
+git checkout feature/gost-support
+
+# Сборка и установка
+./autogen.sh --force
+./configure --enable-maintainer-mode
+make -j$(nproc)
+sudo make install
+
 # Сборка RPM
 mkdir build2 && cd build2
 cmake .. \
@@ -59,8 +83,7 @@ cmake .. \
   -DENABLE_TESTSUITE=OFF
 make -j$(nproc)
 
-
-затем запиши в файл /root/stan01-key.asc этот ключ:
+# затем запиши в файл /root/stan01-key.asc этот ключ:
 
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
@@ -77,4 +100,5 @@ BQJoY9tsAhsMAAoJEG2o0V0LJee/scoA/1Yw18xxA3LOD4N3BnxqgXVCwdpCJPmn
 =M+Qx
 -----END PGP PUBLIC KEY BLOCK-----
 
-и попытайся его импортировать. rpm -vvvvv --import /root/stan01-key.asc
+# и попытайся его импортировать. 
+rpm -vvvvv --import /root/stan01-key.asc
