@@ -455,9 +455,7 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
                 pgpDigParams sigp, int is_gost)
 {
     const uint8_t * pend = h + hlen;
-    pgpDigAlg sigalg = pgpSignatureNew(pubkey_algo, is_gost);
-    /* Determine GOST based on caller hint and algorithm type */
-    int sig_gost = is_gost;
+    int sig_gost = 0;
     switch (pubkey_algo) {
     case PGPPUBKEYALGO_GOST3410_2001:
     case PGPPUBKEYALGO_GOST3410_2001_A:
@@ -1432,10 +1430,17 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
     if (hash == NULL || memcmp(hash, sig->signhash16, 2) != 0)
         goto exit;
 
-    if (sig->is_gost && key && key->alg && sig->alg) {
-        int vrc = gost_verify(key->alg, sig->alg, hash, hashlen);
-        rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: gost verify returned %d\n", vrc);
-        res = (vrc == 0) ? RPMRC_OK : RPMRC_FAIL;
+    int key_is_gost = (key && key->alg && key->alg->is_gost);
+    int use_gost = sig->is_gost || key_is_gost;
+    if (use_gost) {
+        if (key && key->alg && sig->alg) {
+            int vrc = gost_verify(key->alg, sig->alg, hash, hashlen);
+            rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: gost verify returned %d\n", vrc);
+            res = (vrc == 0) ? RPMRC_OK : RPMRC_FAIL;
+        } else {
+            res = RPMRC_NOKEY;
+            rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: no key provided for GOST\n");
+        }
         goto exit;
     }
 
