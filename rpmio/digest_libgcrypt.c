@@ -275,20 +275,25 @@ static int pgpSetSigMpiDSA(pgpDigAlg pgpsig, int num, const uint8_t *p)
     struct pgpDigSigDSA_s *sig = pgpsig->data;
     int mlen = pgpMpiLen(p);
     int rc = 1;
+    rpmlog(RPMLOG_DEBUG, "pgpSetSigMpiDSA: num=%d mlen=%d\n", num, mlen);
 
     if (!sig)
-	sig = pgpsig->data = xcalloc(1, sizeof(*sig));
+        sig = xcalloc(1, sizeof(*sig));
 
     switch (num) {
     case 0:
-	if (!gcry_mpi_scan(&sig->r, GCRYMPI_FMT_PGP, p, mlen, NULL))
-	    rc = 0;
-	break;
+        if (!gcry_mpi_scan(&sig->r, GCRYMPI_FMT_PGP, p, mlen, NULL))
+            rc = 0;
+        break;
     case 1:
-	if (!gcry_mpi_scan(&sig->s, GCRYMPI_FMT_PGP, p, mlen, NULL))
-	    rc = 0;
-	break;
+        if (!gcry_mpi_scan(&sig->s, GCRYMPI_FMT_PGP, p, mlen, NULL))
+            rc = 0;
+        break;
+    default:
+        break;
     }
+    pgpsig->data = sig;
+
     return rc;
 }
 
