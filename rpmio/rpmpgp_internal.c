@@ -73,6 +73,7 @@ struct pgpDigParams_s {
 #define	PGPDIG_SIG_HAS_KEY_FLAGS	(1 << 3)
 
     pgpDigAlg alg;
+    int is_gost;
 };
 
 static void pgpPrtNL(void)
@@ -446,10 +447,12 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     int rc = processMpis(sigalg->mpis, sigalg, p, pend);
 
     /* We can't handle more than one sig at a time */
-    if (rc == 0 && sigp->alg == NULL && sigp->tag == PGPTAG_SIGNATURE)
-	sigp->alg = sigalg;
-    else
-	pgpDigAlgFree(sigalg);
+    if (rc == 0 && sigp->alg == NULL && sigp->tag == PGPTAG_SIGNATURE) {
+        sigp->alg = sigalg;
+        sigp->is_gost = is_gost;
+    } else {
+        pgpDigAlgFree(sigalg);
+    }
 
     return rc;
 }
@@ -641,10 +644,11 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
     }
     rc = processMpis(keyalg->mpis, keyalg, p, pend);
     if (rc == 0) {
-	keyp->pubkey_algo = pubkey_algo;
-	keyp->alg = keyalg;
+        keyp->pubkey_algo = pubkey_algo;
+        keyp->alg = keyalg;
+        keyp->is_gost = keyalg->is_gost;
     } else {
-	pgpDigAlgFree(keyalg);
+        pgpDigAlgFree(keyalg);
     }
     return rc;
 }
