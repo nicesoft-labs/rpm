@@ -236,6 +236,27 @@ pgpDigParams rpmPubkeyPgpDigParams(rpmPubkey key)
     }
     return params;
 }
+pgpDigParams rpmKeyringLookupBySignID(rpmKeyring keyring, const uint8_t *signid)
+{
+    pgpDigParams params = NULL;
+
+    if (keyring && signid) {
+        struct rpmPubkey_s needle, **found = NULL;
+
+        memset(&needle, 0, sizeof(needle));
+        memcpy(needle.keyid, signid, PGP_KEYID_LEN);
+
+        if (keyring->keys) {
+            found = bsearch(&needle, keyring->keys, keyring->numkeys,
+                            sizeof(*keyring->keys), keyidcmp);
+        }
+        if (found)
+            params = (*found)->pgpkey;
+    }
+
+    return params;
+}
+
 
 static rpmPubkey findbySig(rpmKeyring keyring, pgpDigParams sig)
 {
@@ -270,10 +291,24 @@ rpmRC rpmKeyringVerifySig(rpmKeyring keyring, pgpDigParams sig, DIGEST_CTX ctx)
 
     if (sig && ctx) {
 	pgpDigParams pgpkey = NULL;
-	rpmPubkey key = findbySig(keyring, sig);
+        rpmPubkey key = findbySig(keyring, sig);
 
-	if (key)
-	    pgpkey = key->pgpkey;
+        if (key) {
+            pgpkey = key->pgpkey;
+        } else {
+            pgpkey = rpmKeyringLookupBySignID(keyring, pgpDigParamsSignID(sig));
+            if (pgpkey) {
+                char *kid = rpmhex(pgpDigParamsSignID(pgpkey), PGP_KEYID_LEN);
+                rpmlog(RPMLOG_DEBUG,
+                       "rpmKeyringVerifySig: fallback key %s algo=%s\n",
+                       kid ? kid : "",
+                       pgpValStr(pgpPubkeyTbl,
+                                pgpDigParamsAlgo(pgpkey, PGPVAL_PUBKEYALGO)));
+                free(kid);
+                if (sig->is_gost == 0 && pgpkey->alg && pgpkey->alg->is_gost)
+                    sig->is_gost = 1;
+            }
+        }
 
 	/* We call verify even if key not found for a signature sanity check */
 	char *lints = NULL;
