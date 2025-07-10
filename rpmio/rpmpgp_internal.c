@@ -521,16 +521,12 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     default:
         break;
     }
-   if (sig_gost) {
-       if (orig_algo == PGPPUBKEYALGO_ECDSA) {
-           /* ECDSA на GOST-кривой → оставляем ECDSA, но с is_gost=1 */
-           pubkey_algo = PGPPUBKEYALGO_ECDSA;
-       }
-       else {
-           /* остальной GOST → классический GOST3410_2001 */
-           pubkey_algo = PGPPUBKEYALGO_GOST3410_2001;
-       }
-   }
+	if (sig_gost) {
+	    if (orig_algo == PGPPUBKEYALGO_ECDSA)
+	        pubkey_algo = PGPPUBKEYALGO_ECDSA;
+	    else
+	        pubkey_algo = PGPPUBKEYALGO_GOST3410_2001;
+	}
     if (sig_gost && pend - p >= 2) {
         size_t mpilen = pgpMpiLen(p);
         if (mpilen > 2 && (p + mpilen) < pend &&
