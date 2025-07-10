@@ -452,37 +452,82 @@ static int pgpVerifySigGOST2012(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
 static int pgpVerifySigGOSTEC(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
                               uint8_t *hash, size_t hashlen, int hash_algo)
 {
-    struct pgpDigKeyEDDSA_s *key = pgpkey->data;
-    struct pgpDigSigDSA_s *sig = pgpsig->data;
+    rpmlog(RPMLOG_DEBUG, "GOSTEC: called pgpVerifySigGOSTEC\n");
+
+    struct pgpDigKeyEDDSA_s *key = pgpkey ? pgpkey->data : NULL;
+    struct pgpDigSigDSA_s *sig = pgpsig ? pgpsig->data : NULL;
     gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
     int rc = 1;
 
-    if (!key || !sig || !key->q || !sig->r || !sig->s)
+    rpmlog(RPMLOG_DEBUG,
+        "GOSTEC: inputs: pgpkey=%p pgpsig=%p hash=%p hashlen=%zu hash_algo=%d\n",
+        pgpkey, pgpsig, hash, hashlen, hash_algo);
+
+    rpmlog(RPMLOG_DEBUG,
+        "GOSTEC: structs: key=%p sig=%p\n", key, sig);
+
+    if (!key || !sig) {
+        rpmlog(RPMLOG_ERR, "GOSTEC: key or sig struct is NULL\n");
         return rc;
-	
-	rpmlog(RPMLOG_DEBUG, "GOSTEC: key=%p q=%p sig=%p r=%p s=%p\n",
-	    key, key ? key->q : NULL,
-	    sig, sig ? sig->r : NULL, sig ? sig->s : NULL);
+    }
 
-    gcry_sexp_build(&sexp_sig, NULL,
-                    "(sig-val (ecc (r %M) (s %M)))",
-                    sig->r, sig->s);
-    gcry_sexp_build(&sexp_data, NULL,
-                    "(data (flags raw) (value %b))",
-                    (int)hashlen, (const char *)hash);
-    gcry_sexp_build(&sexp_pkey, NULL,
-                    "(public-key (ecc (curve \"GOST2001-CryptoPro-A\") (q %M)))",
-                    key->q);
+    rpmlog(RPMLOG_DEBUG,
+        "GOSTEC: key->q=%p sig->r=%p sig->s=%p\n",
+        key->q, sig->r, sig->s);
 
-    if (sexp_sig && sexp_data && sexp_pkey)
-        rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
+    if (!key->q || !sig->r || !sig->s) {
+        rpmlog(RPMLOG_ERR, "GOSTEC: q/r/s NULL — cannot verify\n");
+        return rc;
+    }
+
+    if (!hash || hashlen == 0) {
+        rpmlog(RPMLOG_ERR, "GOSTEC: hash buffer is NULL or empty\n");
+        return rc;
+    }
+
+    rpmlog(RPMLOG_DEBUG, "GOSTEC: building S-expressions...\n");
+
+    if (gcry_sexp_build(&sexp_sig, NULL,
+                        "(sig-val (ecc (r %M) (s %M)))",
+                        sig->r, sig->s)) {
+        rpmlog(RPMLOG_ERR, "GOSTEC: failed to build sexp_sig\n");
+    } else {
+        rpmlog(RPMLOG_DEBUG, "GOSTEC: sexp_sig OK\n");
+    }
+
+    if (gcry_sexp_build(&sexp_data, NULL,
+                        "(data (flags raw) (value %b))",
+                        (int)hashlen, (const char *)hash)) {
+        rpmlog(RPMLOG_ERR, "GOSTEC: failed to build sexp_data\n");
+    } else {
+        rpmlog(RPMLOG_DEBUG, "GOSTEC: sexp_data OK\n");
+    }
+
+    if (gcry_sexp_build(&sexp_pkey, NULL,
+                        "(public-key (ecc (curve \"GOST2001-CryptoPro-A\") (q %M)))",
+                        key->q)) {
+        rpmlog(RPMLOG_ERR, "GOSTEC: failed to build sexp_pkey\n");
+    } else {
+        rpmlog(RPMLOG_DEBUG, "GOSTEC: sexp_pkey OK\n");
+    }
+
+    if (sexp_sig && sexp_data && sexp_pkey) {
+        rpmlog(RPMLOG_DEBUG, "GOSTEC: calling gcry_pk_verify\n");
+        int verify_rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey);
+        rpmlog(RPMLOG_DEBUG, "GOSTEC: gcry_pk_verify returned %d\n", verify_rc);
+        rc = verify_rc == 0 ? 0 : 1;
+    } else {
+        rpmlog(RPMLOG_ERR, "GOSTEC: One or more sexp are NULL, skipping verify\n");
+    }
 
     gcry_sexp_release(sexp_sig);
     gcry_sexp_release(sexp_data);
     gcry_sexp_release(sexp_pkey);
+
+    rpmlog(RPMLOG_DEBUG, "GOSTEC: final rc=%d\n", rc);
+
     return rc;
 }
-
 
 static const char *pgpCurveName(int curve)
 {
