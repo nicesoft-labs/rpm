@@ -1414,12 +1414,15 @@ static int gost_verify(pgpDigAlg keyalg, pgpDigAlg sigalg,
     if (!key || !sig || !key->q || !sig->r || !sig->s)
         return rc;
 
-    if (gcry_mpi_scan(&qmpi, GCRYMPI_FMT_USG, key->q, key->qlen, NULL))
-        goto exit;
+    if (gcry_mpi_scan(&qmpi, GCRYMPI_FMT_USG, key->q, key->qlen, NULL)) {
+        rpmlog(RPMLOG_ERR, "gost_verify: gcry_mpi_scan(q) failed\n");
+	    goto exit;
+    }
     size_t rlen = BN_num_bytes(sig->r);
     unsigned char *rbuf = xmalloc(rlen);
     BN_bn2bin(sig->r, rbuf);
     if (gcry_mpi_scan(&rmpi, GCRYMPI_FMT_USG, rbuf, rlen, NULL)) {
+        rpmlog(RPMLOG_ERR, "gost_verify: gcry_mpi_scan(r) failed\n");
         free(rbuf);
         goto exit;
     }
@@ -1428,6 +1431,7 @@ static int gost_verify(pgpDigAlg keyalg, pgpDigAlg sigalg,
     unsigned char *sbuf = xmalloc(slen);
     BN_bn2bin(sig->s, sbuf);
     if (gcry_mpi_scan(&smpi, GCRYMPI_FMT_USG, sbuf, slen, NULL)) {
+        rpmlog(RPMLOG_ERR, "gost_verify: gcry_mpi_scan(s) failed\n");
         free(sbuf);
         goto exit;
     }
@@ -1458,8 +1462,10 @@ static int gost_verify(pgpDigAlg keyalg, pgpDigAlg sigalg,
                         "(data (value %b))", (int)hashlen, hash) ||
         gcry_sexp_build(&sexp_pkey, NULL,
                         "(public-key (ecc (curve \"1.2.643.2.2.35.1\") (q %M)))",
-                        qmpi))
+                        qmpi)) {
+        rpmlog(RPMLOG_ERR, "gost_verify: gcry_sexp_build failed\n");
         goto exit;
+    }
 
     if (sexp_sig && sexp_data && sexp_pkey) {
         char *hex = rpmhex(hash, hashlen);
