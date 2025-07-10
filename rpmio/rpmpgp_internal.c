@@ -59,10 +59,6 @@ static char *mpi2hex(gcry_mpi_t mpi)
     }
     return hex;
 }
-static int is_gost_oid(const char *oid)
-{
-    return oid && strcmp(oid, "1.2.643.2.2.35.1") == 0;
-}
 
 static int is_gost_oid(const char *oid)
 {
