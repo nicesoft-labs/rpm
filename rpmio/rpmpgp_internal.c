@@ -555,6 +555,7 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
         sigp->is_gost = sig_gost;
     } else {
         pgpDigAlgFree(sigalg);
+        sigp->alg = NULL;  // <--- КЛЮЧЕВОЕ!
     }
     return rc;
 }
