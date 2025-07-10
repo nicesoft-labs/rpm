@@ -456,18 +456,34 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
 {
     const uint8_t * pend = h + hlen;
     pgpDigAlg sigalg = pgpSignatureNew(pubkey_algo, is_gost);
+    /* Determine GOST based on caller hint and algorithm type */
+    int sig_gost = is_gost;
+    switch (pubkey_algo) {
+    case PGPPUBKEYALGO_GOST3410_2001:
+    case PGPPUBKEYALGO_GOST3410_2001_A:
+    case PGPPUBKEYALGO_GOST3410_2001_B:
+    case PGPPUBKEYALGO_GOST3410_2001_C:
+    case PGPPUBKEYALGO_GOST3410_2001_XCHA:
+    case PGPPUBKEYALGO_GOST3410_2001_XCHB:
+    case PGPPUBKEYALGO_GOST3410_2012_256:
+        sig_gost = 1;
+        break;
+    default:
+        break;
+    }
+    pgpDigAlg sigalg = pgpSignatureNew(pubkey_algo, sig_gost);
 
     int rc = processMpis(sigalg->mpis, sigalg, p, pend);
     rpmlog(RPMLOG_DEBUG,
            "pgpPrtSigParams: pubkey_algo=%s(%u) is_gost=%d rc=%d\n",
-           pgpValStr(pgpPubkeyTbl, pubkey_algo), pubkey_algo, is_gost, rc);
+           pgpValStr(pgpPubkeyTbl, pubkey_algo), pubkey_algo, sig_gost, rc);
 	
     /* Always initialize signature algorithm on each pass */
     if (rc == 0 && sigp->tag == PGPTAG_SIGNATURE) {
         if (sigp->alg)
             pgpDigAlgFree(sigp->alg);
         sigp->alg = sigalg;
-        sigp->is_gost = is_gost;
+        sigp->is_gost = sig_gost;
     } else {
         pgpDigAlgFree(sigalg);
     }
@@ -483,7 +499,11 @@ static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
     size_t plen;
     int rc = 1;
 
-    /* Reset the saved flags */
+    /* Reset the saved flags and previous algorithm */
+    if (_digp->alg) {
+        pgpDigAlgFree(_digp->alg);
+        _digp->alg = NULL;
+    }
     _digp->saved &= PGPDIG_SAVED_TIME | PGPDIG_SAVED_ID;
     _digp->key_flags = 0;
 
@@ -509,20 +529,19 @@ static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
 	pgpPrtHex(" signhash16", v->signhash16, sizeof(v->signhash16));
 	pgpPrtNL();
 
-	if (_digp->pubkey_algo == 0) {
-	    _digp->version = v->version;
-	    _digp->hashlen = v->hashlen;
-	    _digp->sigtype = v->sigtype;
-	    _digp->hash = memcpy(xmalloc(v->hashlen), &v->sigtype, v->hashlen);
-	    if (!(_digp->saved & PGPDIG_SAVED_TIME))
-		_digp->time = pgpGrab(v->time, sizeof(v->time));
-	    if (!(_digp->saved & PGPDIG_SAVED_ID))
-		memcpy(_digp->signid, v->signid, sizeof(_digp->signid));
-	    _digp->saved = PGPDIG_SAVED_TIME | PGPDIG_SIG_HAS_CREATION_TIME | PGPDIG_SAVED_ID;
-	    _digp->pubkey_algo = v->pubkey_algo;
-	    _digp->hash_algo = v->hash_algo;
-	    memcpy(_digp->signhash16, v->signhash16, sizeof(_digp->signhash16));
-	}
+        _digp->version = v->version;
+        _digp->hashlen = v->hashlen;
+        _digp->sigtype = v->sigtype;
+        free(_digp->hash);
+        _digp->hash = memcpy(xmalloc(v->hashlen), &v->sigtype, v->hashlen);
+        if (!(_digp->saved & PGPDIG_SAVED_TIME))
+            _digp->time = pgpGrab(v->time, sizeof(v->time));
+        if (!(_digp->saved & PGPDIG_SAVED_ID))
+            memcpy(_digp->signid, v->signid, sizeof(_digp->signid));
+        _digp->saved = PGPDIG_SAVED_TIME | PGPDIG_SIG_HAS_CREATION_TIME | PGPDIG_SAVED_ID;
+        _digp->pubkey_algo = v->pubkey_algo;
+        _digp->hash_algo = v->hash_algo;
+        memcpy(_digp->signhash16, v->signhash16, sizeof(_digp->signhash16));
 
         p = ((uint8_t *)v) + sizeof(*v);
         /* Propagate is_gost from caller so signature algorithm is initialized
@@ -551,10 +570,10 @@ static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
 	if ((p + plen) > hend)
 	    return 1;
 
-	if (_digp->pubkey_algo == 0) {
-	    _digp->hashlen = sizeof(*v) + plen;
-	    _digp->hash = memcpy(xmalloc(_digp->hashlen), v, _digp->hashlen);
-	}
+        _digp->hashlen = sizeof(*v) + plen;
+        free(_digp->hash);
+        _digp->hash = memcpy(xmalloc(_digp->hashlen), v, _digp->hashlen);
+     
 	if (pgpPrtSubType(p, plen, v->sigtype, _digp, 1))
 	    return 1;
 	p += plen;
@@ -578,13 +597,11 @@ static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
 	pgpPrtHex(" signhash16", p, 2);
 	pgpPrtNL();
 
-	if (_digp->pubkey_algo == 0) {
-	    _digp->version = v->version;
-	    _digp->sigtype = v->sigtype;
-	    _digp->pubkey_algo = v->pubkey_algo;
-	    _digp->hash_algo = v->hash_algo;
-	    memcpy(_digp->signhash16, p, sizeof(_digp->signhash16));
-	}
+        _digp->version = v->version;
+        _digp->sigtype = v->sigtype;
+        _digp->pubkey_algo = v->pubkey_algo;
+        _digp->hash_algo = v->hash_algo;
+        memcpy(_digp->signhash16, p, sizeof(_digp->signhash16));
 
 	p += 2;
 	if (p > hend)
