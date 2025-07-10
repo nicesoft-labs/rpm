@@ -984,6 +984,16 @@ uint32_t pgpDigParamsCreationTime(pgpDigParams digp)
 {
     return digp->time;
 }
+int pgpDigParamsIsGost(pgpDigParams digp)
+{
+    return digp ? digp->is_gost : 0;
+}
+
+void pgpDigParamsSetIsGost(pgpDigParams digp, int is_gost)
+{
+    if (digp)
+        digp->is_gost = is_gost;
+}
 
 static pgpDigParams pgpDigParamsNew(uint8_t tag)
 {
