@@ -750,11 +750,14 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
         }
     }
     rc = processMpis(keyalg->mpis, keyalg, p, pend);
-    if (rc == 0 || keyalg->is_gost) {
-        keyp->pubkey_algo = pubkey_algo;
-        keyp->alg = keyalg;
-        keyp->is_gost = keyalg->is_gost;
-    } else {
+if (rc != 0 && keyalg->is_gost && keyalg->mpis == 4) {
+    // Fallback for minimal Q-only key
+    rpmlog(RPMLOG_DEBUG, "Fallback: treating GOST as ECDSA with Q only\n");
+    keyalg->setmpi = pgpSetKeyMpiEDDSA;
+    keyalg->free = pgpFreeKeyEDDSA;
+    keyalg->mpis = 1;
+    rc = processMpis(keyalg->mpis, keyalg, p, pend);
+} else {
         pgpDigAlgFree(keyalg);
     }
     return rc;
