@@ -15,6 +15,14 @@
 #include "rpmpgp_internal.h"
 #include "rpmio_internal.h"	/* XXX rpmioSlurp */
 
+#include <gcrypt.h>
+#ifdef WITH_OPENSSL
+#include <openssl/bn.h>
+#include <openssl/evp.h>
+#include <openssl/dsa.h>
+#endif
+
+
 #include "debug.h"
 
 static int _print = 0;
@@ -821,9 +829,11 @@ static int pgpPrtPkt(struct pgpPkt *p, pgpDigParams _digp)
     int rc = 0;
 
     switch (p->tag) {
-    case PGPTAG_SIGNATURE:
-        rc = pgpPrtSig(p->tag, p->body, p->blen, _digp, 0);
-	break;
+    case PGPTAG_SIGNATURE: {
+        int gost = (_digp && _digp->alg) ? _digp->alg->is_gost : 0;
+        rc = pgpPrtSig(p->tag, p->body, p->blen, _digp, gost);
+        break;
+    }
     case PGPTAG_PUBLIC_KEY:
 	/* Get the public key Key ID. */
 	rc = getKeyID(p->body, p->blen, _digp->signid);
@@ -1190,6 +1200,83 @@ int pgpPrtParamsSubkeys(const uint8_t *pkts, size_t pktlen,
     return rc;
 }
 
+/* Verify GOST signature using libgcrypt */
+static int gost_verify(pgpDigAlg keyalg, pgpDigAlg sigalg,
+                       const uint8_t *hash, size_t hashlen)
+{
+#ifdef WITH_OPENSSL
+    struct pgpDigKeyGOST_s {
+        EVP_PKEY *evp_pkey; /* unused */
+        unsigned char *q;
+        int qlen;
+    };
+    struct pgpDigSigDSA_s {
+        BIGNUM *r;
+        BIGNUM *s;
+        DSA_SIG *dsa_sig; /* unused */
+    };
+    struct pgpDigKeyGOST_s *key = keyalg ? keyalg->data : NULL;
+    struct pgpDigSigDSA_s *sig = sigalg ? sigalg->data : NULL;
+    gcry_mpi_t qmpi = NULL, rmpi = NULL, smpi = NULL;
+    gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
+    int rc = 1;
+
+    if (!key || !sig || !key->q || !sig->r || !sig->s)
+        return rc;
+
+    gcry_mpi_scan(&qmpi, GCRYMPI_FMT_USG, key->q, key->qlen, NULL);
+    size_t rlen = BN_num_bytes(sig->r);
+    unsigned char *rbuf = xmalloc(rlen);
+    BN_bn2bin(sig->r, rbuf);
+    gcry_mpi_scan(&rmpi, GCRYMPI_FMT_USG, rbuf, rlen, NULL);
+    free(rbuf);
+    size_t slen = BN_num_bytes(sig->s);
+    unsigned char *sbuf = xmalloc(slen);
+    BN_bn2bin(sig->s, sbuf);
+    gcry_mpi_scan(&smpi, GCRYMPI_FMT_USG, sbuf, slen, NULL);
+    free(sbuf);
+#else
+    struct pgpDigKeyEDDSA_s {
+        gcry_mpi_t q;
+    };
+    struct pgpDigSigDSA_s {
+        gcry_mpi_t r;
+        gcry_mpi_t s;
+    };
+    struct pgpDigKeyEDDSA_s *key = keyalg ? keyalg->data : NULL;
+    struct pgpDigSigDSA_s *sig = sigalg ? sigalg->data : NULL;
+    gcry_mpi_t qmpi = key ? key->q : NULL;
+    gcry_mpi_t rmpi = sig ? sig->r : NULL;
+    gcry_mpi_t smpi = sig ? sig->s : NULL;
+    gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
+    int rc = 1;
+
+    if (!qmpi || !rmpi || !smpi)
+        return rc;
+#endif
+
+    gcry_sexp_build(&sexp_sig, NULL,
+                    "(sig-val (ecc (r %M) (s %M)))", rmpi, smpi);
+    gcry_sexp_build(&sexp_data, NULL,
+                    "(data (flags raw) (value %b))", (int)hashlen, hash);
+    gcry_sexp_build(&sexp_pkey, NULL,
+                    "(public-key (ecc (curve \"1.2.643.2.2.35.1\") (q %M)))",
+                    qmpi);
+    if (sexp_sig && sexp_data && sexp_pkey)
+        rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
+
+    gcry_sexp_release(sexp_sig);
+    gcry_sexp_release(sexp_data);
+    gcry_sexp_release(sexp_pkey);
+#ifdef WITH_OPENSSL
+    gcry_mpi_release(qmpi);
+    gcry_mpi_release(rmpi);
+    gcry_mpi_release(smpi);
+#endif
+    return rc;
+}
+
+
 rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
 {
     rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: start\n");
@@ -1227,7 +1314,14 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
 
     /* Compare leading 16 bits of digest for quick check. */
     if (hash == NULL || memcmp(hash, sig->signhash16, 2) != 0)
-	goto exit;
+        goto exit;
+
+    if (sig->is_gost && key && key->alg && sig->alg) {
+        int vrc = gost_verify(key->alg, sig->alg, hash, hashlen);
+        rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: gost verify returned %d\n", vrc);
+        res = (vrc == 0) ? RPMRC_OK : RPMRC_FAIL;
+        goto exit;
+    }
 
     /*
      * If we have a key, verify the signature for real. Otherwise we've
