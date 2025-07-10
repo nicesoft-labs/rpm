@@ -523,7 +523,10 @@ static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
 	}
 
         p = ((uint8_t *)v) + sizeof(*v);
-        rc = tag ? pgpPrtSigParams(tag, v->pubkey_algo, p, h, hlen, _digp, 0) : 0;
+        /* Propagate is_gost from caller so signature algorithm is initialized
+         * correctly for GOST curves */
+        rc = tag ? pgpPrtSigParams(tag, v->pubkey_algo, p, h, hlen, _digp,
+                                   is_gost) : 0;
     }	break;
     case 4:
     {   pgpPktSigV4 v = (pgpPktSigV4)h;
@@ -585,7 +588,9 @@ static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
 	if (p > hend)
 	    return 1;
 
-        rc = tag ? pgpPrtSigParams(tag, v->pubkey_algo, p, h, hlen, _digp, 0) : 0;
+        /* Use caller is_gost when creating signature algorithm */
+        rc = tag ? pgpPrtSigParams(tag, v->pubkey_algo, p, h, hlen, _digp,
+                                   is_gost) : 0;
     }	break;
     default:
         rpmlog(RPMLOG_WARNING, _("Unsupported version of signature: V%d\n"), version);
@@ -1330,6 +1335,18 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
         sig->is_gost = 1;
     rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: effective is_gost=%d\n",
            sig->is_gost);
+
+    if (sig->is_gost || (key && key->alg && key->alg->is_gost)) {
+        char *kid = rpmhex(key ? key->signid : sig->signid,
+                           sizeof(sig->signid));
+        rpmlog(RPMLOG_DEBUG,
+               "pgpVerifySignature: keyid=%s curve=%d oid=%s\n",
+               kid ? kid : "",
+               key && key->alg ? key->alg->curve : 0,
+               (key && key->alg && key->alg->is_gost) ?
+                    "1.2.643.2.2.35.1" : "");
+        free(kid);
+    }
 	
     rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: pubkey_algo=%s(%u) hash_algo=%s(%u)\n",
            pgpValStr(pgpPubkeyTbl, sig->pubkey_algo), sig->pubkey_algo,
