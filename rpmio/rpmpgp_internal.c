@@ -64,6 +64,11 @@ static int is_gost_oid(const char *oid)
     return oid && strcmp(oid, "1.2.643.2.2.35.1") == 0;
 }
 
+static int is_gost_oid(const char *oid)
+{
+    return oid && strcmp(oid, "1.2.643.2.2.35.1") == 0;
+}
+
 static int is_gost_pubkey_algo(int algo)
 {
     switch (algo) {
@@ -81,6 +86,7 @@ static int is_gost_pubkey_algo(int algo)
         return 0;
     }
 }
+
 
 /** \ingroup rpmio
  * Values parsed from OpenPGP signature/pubkey packet(s).
@@ -695,7 +701,6 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
         p += len + 1;
         if (is_gost_oid(oidstr))
             pubkey_algo = PGPPUBKEYALGO_GOST3410_2001;
-    }
     }
     pgpDigAlg keyalg = pgpPubkeyNew(pubkey_algo, curve, oidstr);
     rpmlog(RPMLOG_DEBUG,
