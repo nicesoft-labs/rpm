@@ -459,6 +459,10 @@ static int pgpVerifySigGOSTEC(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
 
     if (!key || !sig || !key->q || !sig->r || !sig->s)
         return rc;
+	
+	rpmlog(RPMLOG_DEBUG, "GOSTEC: key=%p q=%p sig=%p r=%p s=%p\n",
+	    key, key ? key->q : NULL,
+	    sig, sig ? sig->r : NULL, sig ? sig->s : NULL);
 
     gcry_sexp_build(&sexp_sig, NULL,
                     "(sig-val (ecc (r %M) (s %M)))",
