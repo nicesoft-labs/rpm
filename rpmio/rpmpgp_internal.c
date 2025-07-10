@@ -1320,6 +1320,11 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
     if (hash == NULL || memcmp(hash, sig->signhash16, 2) != 0)
         goto exit;
 
+    /* ГОСТ linkage: if key is GOST, propagate to sig */
+    if (sig->is_gost == 0 && key && key->alg && key->alg->is_gost) {
+        sig->is_gost = 1;
+    }
+
     if (sig->is_gost && key && key->alg && sig->alg) {
         int vrc = gost_verify(key->alg, sig->alg, hash, hashlen);
         rpmlog(RPMLOG_DEBUG, "pgpVerifySignature: gost verify returned %d\n", vrc);
