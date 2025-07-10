@@ -933,6 +933,28 @@ pgpDigAlg pgpSignatureNew(int algo, int is_gost)
     pgpDigAlg sa = xcalloc(1, sizeof(*sa));
     sa->is_gost = is_gost;
 
+    /*
+     * Явная поддержка ECDSA, чтобы не попадать в дефолт
+     * и не использовать неверные или NULL-указатели.
+     */
+    if (algo == PGPPUBKEYALGO_ECDSA) {
+        if (is_gost) {
+            /* ECDSA на GOST-кривой → GOST-EC verify */
+            sa->setmpi = pgpSetSigMpiDSA;
+            sa->free   = pgpFreeSigDSA;
+            sa->verify = pgpVerifySigGOSTEC;
+            sa->mpis   = 2;
+        }
+        else {
+            /* Обычное ECDSA-verify */
+            sa->setmpi = pgpSetSigMpiDSA;
+            sa->free   = pgpFreeSigDSA;
+            sa->verify = pgpVerifySigECDSA;
+            sa->mpis   = 2;
+        }
+        return sa;
+    }
+	
     if (sa->is_gost && algo == PGPPUBKEYALGO_ECDSA) {
         rpmlog(RPMLOG_DEBUG,
                "pgpSignatureNew: using GOST verification for ECDSA algo\n");
