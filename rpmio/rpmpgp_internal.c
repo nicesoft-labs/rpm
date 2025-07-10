@@ -533,7 +533,6 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     }
     pgpDigAlg sigalg = pgpSignatureNew(pubkey_algo, sig_gost);
 
-    int rc = processMpis(sigalg->mpis, sigalg, p, pend);
     const uint8_t *cur = p;
     int rc = processMpis(sigalg->mpis, sigalg, &cur, pend);
     rpmlog(RPMLOG_DEBUG,
