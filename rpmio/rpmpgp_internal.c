@@ -59,6 +59,28 @@ static char *mpi2hex(gcry_mpi_t mpi)
     }
     return hex;
 }
+static int is_gost_oid(const char *oid)
+{
+    return oid && strcmp(oid, "1.2.643.2.2.35.1") == 0;
+}
+
+static int is_gost_pubkey_algo(int algo)
+{
+    switch (algo) {
+    case PGPPUBKEYALGO_GOST3410_2012_256:
+    case PGPPUBKEYALGO_GOST3410_2001_A:
+    case PGPPUBKEYALGO_GOST3410_2001_B:
+    case PGPPUBKEYALGO_GOST3410_2001_C:
+    case PGPPUBKEYALGO_GOST3410_2001_XCHA:
+    case PGPPUBKEYALGO_GOST3410_2001_XCHB:
+#if PGPPUBKEYALGO_GOST3410_2001 != PGPPUBKEYALGO_ECDSA
+    case PGPPUBKEYALGO_GOST3410_2001:
+#endif
+        return 1;
+    default:
+        return 0;
+    }
+}
 
 /** \ingroup rpmio
  * Values parsed from OpenPGP signature/pubkey packet(s).
@@ -455,7 +477,7 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
                 pgpDigParams sigp, int is_gost)
 {
     const uint8_t * pend = h + hlen;
-    int sig_gost = 0;
+    int sig_gost = is_gost;
     switch (pubkey_algo) {
     case PGPPUBKEYALGO_GOST3410_2001:
     case PGPPUBKEYALGO_GOST3410_2001_A:
@@ -671,6 +693,9 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
         curve = pgpCurveByOid(oid, len);
         oidstr = oid2str(oid, len, oidbuf, sizeof(oidbuf));
         p += len + 1;
+        if (is_gost_oid(oidstr))
+            pubkey_algo = PGPPUBKEYALGO_GOST3410_2001;
+    }
     }
     pgpDigAlg keyalg = pgpPubkeyNew(pubkey_algo, curve, oidstr);
     rpmlog(RPMLOG_DEBUG,
@@ -1431,7 +1456,11 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
         goto exit;
 
     int key_is_gost = (key && key->alg && key->alg->is_gost);
-    int use_gost = sig->is_gost || key_is_gost;
+    int key_algo_gost = key ? is_gost_pubkey_algo(key->pubkey_algo) : 0;
+    int sig_algo_gost = is_gost_pubkey_algo(sig->pubkey_algo);
+    if (sig_algo_gost)
+        sig->is_gost = 1;
+    int use_gost = sig->is_gost || key_is_gost || key_algo_gost || sig_algo_gost;
     if (use_gost) {
         if (key && key->alg && sig->alg) {
             int vrc = gost_verify(key->alg, sig->alg, hash, hashlen);
