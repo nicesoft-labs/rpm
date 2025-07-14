@@ -14,6 +14,22 @@ static int is_gost_curve_oid(const char *oid)
     return (oid && strcmp(oid, "1.2.643.2.2.35.1") == 0);
 }
 
+/* Structures used in GOST signature verification need to be defined
+ * before use in pgpVerifySigGOST. */
+
+struct pgpDigSigDSA_s {
+    gcry_mpi_t r;
+    gcry_mpi_t s;
+};
+
+struct pgpDigKeyDSA_s {
+    gcry_mpi_t p;
+    gcry_mpi_t q;
+    gcry_mpi_t g;
+    gcry_mpi_t y;
+};
+
+
 /* Verification routine for GOST signatures */
 int pgpVerifySigGOST(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
                             uint8_t *hash, size_t hashlen, int hash_algo)
@@ -274,21 +290,6 @@ static void pgpFreeKeyRSA(pgpDigAlg pgpkey)
 	pgpkey->data = _free(key);
     }
 }
-
-
-/****************************** DSA **************************************/
-
-struct pgpDigSigDSA_s {
-    gcry_mpi_t r;
-    gcry_mpi_t s;
-};
-
-struct pgpDigKeyDSA_s {
-    gcry_mpi_t p;
-    gcry_mpi_t q;
-    gcry_mpi_t g;
-    gcry_mpi_t y;
-};
 
 static int pgpSetSigMpiDSA(pgpDigAlg pgpsig, int num, const uint8_t *p)
 {
