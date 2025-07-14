@@ -8,12 +8,14 @@
 #include <rpm/rpmlog.h>
 #include "debug.h"
 
+/* Determine if the received OID corresponds to a GOST curve */
 static int is_gost_curve_oid(const char *oid)
 {
     return (oid && strcmp(oid, "1.2.643.2.2.35.1") == 0);
 }
 
-static int pgpVerifySigGOST(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
+/* Verification routine for GOST signatures */
+int pgpVerifySigGOST(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
                             uint8_t *hash, size_t hashlen, int hash_algo)
 {
     struct pgpDigKeyDSA_s *key = pgpkey->data;
@@ -21,7 +23,7 @@ static int pgpVerifySigGOST(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
     gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
     int rc = 1;
 
-    rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST: ENTER\n");
+    rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST: start\n");
 
     if (!sig || !key)
         return rc;
@@ -41,10 +43,10 @@ static int pgpVerifySigGOST(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
 
     if (sexp_sig && sexp_data && sexp_pkey)
         rc = (gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0) ? 0 : 1;
-
+	
+exit:
     rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST: rc=%d\n", rc);
 
-exit:
     gcry_sexp_release(sexp_sig);
     gcry_sexp_release(sexp_data);
     gcry_sexp_release(sexp_pkey);
@@ -229,13 +231,6 @@ static int pgpSetKeyMpiRSA(pgpDigAlg pgpkey, int num, const uint8_t *p)
 	break;
     }
     return rc;
-exit:
-    if (key) {
-        gcry_mpi_release(key->n);
-        gcry_mpi_release(key->e);
-        pgpkey->data = _free(key);
-    }
-    return rc;
 }
 
 static int pgpVerifySigRSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig, uint8_t *hash, size_t hashlen, int hash_algo)
@@ -305,6 +300,7 @@ static int pgpSetSigMpiDSA(pgpDigAlg pgpsig, int num, const uint8_t *p)
 	sig = pgpsig->data = xcalloc(1, sizeof(*sig));
 
     switch (num) {
+    case 0:
 	if (!gcry_mpi_scan(&sig->r, GCRYMPI_FMT_PGP, p, mlen, NULL))
 	    rc = 0;
 	break;
@@ -405,7 +401,6 @@ struct pgpDigSigEDDSA_s {
 struct pgpDigKeyEDDSA_s {
     gcry_mpi_t q;
 };
-/****************************** EDDSA **************************************/
 
 static int pgpSetSigMpiEDDSA(pgpDigAlg pgpsig, int num, const uint8_t *p)
 {
