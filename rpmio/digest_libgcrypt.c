@@ -11,7 +11,14 @@
 /* Determine if the received OID corresponds to a GOST curve */
 static int is_gost_curve_oid(const char *oid)
 {
-    return (oid && strcmp(oid, "1.2.643.2.2.35.1") == 0);
+    if (!oid)
+        return 0;
+    return (!strcmp(oid, "1.2.643.2.2.35.1") ||
+            !strcmp(oid, "1.2.643.2.2.35.2") ||
+            !strcmp(oid, "1.2.643.2.2.35.3") ||
+            !strcmp(oid, "1.2.643.7.1.2.1.2.1") ||
+            !strcmp(oid, "1.2.643.7.1.2.1.2.2") ||
+            !strcmp(oid, "1.2.643.7.1.2.1.2.3"));
 }
 
 /* Structures used in GOST signature verification need to be defined
