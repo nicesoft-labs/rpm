@@ -16,13 +16,12 @@ struct pgpDigAlg_s {
     freefunc free;
     int curve;
     int mpis;
-    int is_gost;
     void *data;			/*!< algorithm specific private data */
 };
 
-pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid);
+pgpDigAlg pgpPubkeyNew(int algo, int curve);
 
-pgpDigAlg pgpSignatureNew(int algo, int is_gost);
+pgpDigAlg pgpSignatureNew(int algo);
 
 pgpDigAlg pgpDigAlgFree(pgpDigAlg alg);
 
