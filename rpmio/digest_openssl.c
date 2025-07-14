@@ -870,7 +870,7 @@ static void pgpFreeSigGOST(pgpDigAlg pgpsig)
     pgpFreeSigDSA(pgpsig);
 }
 
-static int pgpVerifySigGOST(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
+int pgpVerifySigGOST(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
                            uint8_t *hash, size_t hashlen, int hash_algo)
 {
     int rc = 1;
@@ -919,11 +919,10 @@ static int pgpVerifyNULL(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
 }
 
 /****************************** PGP **************************************/
-pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
+pgpDigAlg pgpPubkeyNew(int algo, int curve)
 {
-    pgpDigAlg ka = xcalloc(1, sizeof(*ka));;
+    pgpDigAlg ka = xcalloc(1, sizeof(*ka));
     ka->curve = curve;
-    ka->is_gost = oid && strcmp(oid, "1.2.643.2.2.35.1") == 0;
 	
     switch (algo) {
     case PGPPUBKEYALGO_RSA:
@@ -937,14 +936,8 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
         ka->mpis = 4;
         break;
     case PGPPUBKEYALGO_ECDSA:
-        if (ka->is_gost) {
-            ka->setmpi = pgpSetKeyMpiGOST;
-            ka->free = pgpFreeKeyGOST;
-            ka->mpis = 1;
-        } else {
-            ka->setmpi = pgpSetMpiNULL;
-            ka->mpis = -1;
-        }
+        ka->setmpi = pgpSetMpiNULL;
+        ka->mpis = -1;
         ka->curve = curve;
         break;
 #ifdef EVP_PKEY_ED25519
@@ -968,17 +961,15 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
 
     ka->verify = pgpVerifyNULL; /* keys can't be verified */
     rpmlog(RPMLOG_DEBUG,
-           "pgpPubkeyNew: algo=%d curve_oid=%s is_gost=%d mpis=%d setmpi=%p free=%p\n",
-           algo, oid ? oid : "", ka->is_gost,
-           ka->mpis, ka->setmpi, ka->free);
+           "pgpPubkeyNew: algo=%d curve=%d mpis=%d setmpi=%p free=%p\n",
+           algo, curve, ka->mpis, ka->setmpi, ka->free);
 
     return ka;
 }
 
-pgpDigAlg pgpSignatureNew(int algo, int is_gost)
+pgpDigAlg pgpSignatureNew(int algo)
 {
     pgpDigAlg sa = xcalloc(1, sizeof(*sa));
-    sa->is_gost = is_gost;
 
     switch (algo) {
     case PGPPUBKEYALGO_RSA:
@@ -994,16 +985,9 @@ pgpDigAlg pgpSignatureNew(int algo, int is_gost)
         sa->mpis = 2;
         break;
     case PGPPUBKEYALGO_ECDSA:
-        if (is_gost) {
-            sa->setmpi = pgpSetSigMpiGOST;
-            sa->free = pgpFreeSigGOST;
-            sa->verify = pgpVerifySigGOST;
-            sa->mpis = 2;
-        } else {
-            sa->setmpi = pgpSetMpiNULL;
-            sa->verify = pgpVerifyNULL;
-            sa->mpis = -1;
-        }
+        sa->setmpi = pgpSetMpiNULL;
+        sa->verify = pgpVerifyNULL;
+        sa->mpis = -1;
         break;
     // case PGPPUBKEYALGO_GOST3410_2001:
     //     sa->setmpi = pgpSetSigMpiDSA;
@@ -1031,7 +1015,7 @@ pgpDigAlg pgpSignatureNew(int algo, int is_gost)
         sa->mpis = -1;
         break;
     }
-    rpmlog(RPMLOG_DEBUG, "pgpSignatureNew: algo=%d is_gost=%d verify=%p\n",
-           algo, is_gost, sa->verify);
+    rpmlog(RPMLOG_DEBUG, "pgpSignatureNew: algo=%d verify=%p\n",
+           algo, sa->verify);
     return sa;
 }
