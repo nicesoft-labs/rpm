@@ -44,22 +44,30 @@ int pgpVerifySigGOST(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
     struct pgpDigKeyDSA_s *key = pgpkey->data;
     struct pgpDigSigDSA_s *sig = pgpsig->data;
     gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
+    const char *algo_name = "gost";
     int rc = 1;
 
+    if (gcry_pk_map_name("gost2012_256"))
+        algo_name = "gost2012_256";
+    else if (gcry_pk_map_name("gost2012_512"))
+        algo_name = "gost2012_512";
+    else if (gcry_pk_map_name("gost2001"))
+        algo_name = "gost2001";
+	
     rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST: start\n");
 
     if (!sig || !key)
         return rc;
 
     if (gcry_sexp_build(&sexp_sig, NULL,
-                        "(sig-val (gost (r %M) (s %M)))",
-                        sig->r, sig->s) ||
+                        "(sig-val (%s (r %M) (s %M)))",
+                        algo_name, sig->r, sig->s) ||
         gcry_sexp_build(&sexp_data, NULL,
                         "(data (flags raw) (value %b))",
                         (int)hashlen, (const char *)hash) ||
         gcry_sexp_build(&sexp_pkey, NULL,
-                        "(public-key (gost (p %M) (q %M) (y %M)))",
-                        key->p, key->q, key->y)) {
+                        "(public-key (%s (p %M) (q %M) (y %M)))",
+                        algo_name, key->p, key->q, key->y)) {
         rpmlog(RPMLOG_ERR, "pgpVerifySigGOST: gcry_sexp_build failed\n");
         goto exit;
     }
