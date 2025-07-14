@@ -955,6 +955,23 @@ uint32_t pgpDigParamsCreationTime(pgpDigParams digp)
     return digp->time;
 }
 
+/* Compatibility stubs for GOST support.  The current implementation
+ * does not track the GOST status inside pgpDigParams, but other parts
+ * of rpm may query or set it.  Provide no-op helpers to satisfy the
+ * linker. */
+
+int pgpDigParamsIsGost(pgpDigParams digp)
+{
+    return 0;
+}
+
+void pgpDigParamsSetIsGost(pgpDigParams digp, int is_gost)
+{
+    (void)digp;
+    (void)is_gost;
+}
+
+
 static pgpDigParams pgpDigParamsNew(uint8_t tag)
 {
     pgpDigParams digp = xcalloc(1, sizeof(*digp));
