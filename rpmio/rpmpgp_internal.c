@@ -49,7 +49,37 @@ static const char *oid2str(const uint8_t *oid, int len,
 /* Check if OID denotes a GOST curve */
 static int is_gost_oid(const char *oid)
 {
-    return (oid && strcmp(oid, "1.2.643.2.2.35.1") == 0);
+    if (!oid)
+        return 0;
+
+    /*
+     * GOST curves use several different OIDs depending on the
+     * standard and parameter set. Recognize the commonly used
+     * identifiers for both the old CryptoPro and the newer 2012
+     * variants to decide whether the signature should be handled
+     * with the GOST verification routine.
+     */
+    return (!strcmp(oid, "1.2.643.2.2.35.1") ||
+            !strcmp(oid, "1.2.643.2.2.35.2") ||
+            !strcmp(oid, "1.2.643.2.2.35.3") ||
+            !strcmp(oid, "1.2.643.7.1.2.1.2.1") ||
+            !strcmp(oid, "1.2.643.7.1.2.1.2.2") ||
+            !strcmp(oid, "1.2.643.7.1.2.1.2.3"));
+}
+
+static int is_gost_algo(uint8_t algo)
+{
+    switch (algo) {
+    case PGPPUBKEYALGO_GOST3410_2012_256:
+    case PGPPUBKEYALGO_GOST3410_2001_A:
+    case PGPPUBKEYALGO_GOST3410_2001_B:
+    case PGPPUBKEYALGO_GOST3410_2001_C:
+    case PGPPUBKEYALGO_GOST3410_2001_XCHA:
+    case PGPPUBKEYALGO_GOST3410_2001_XCHB:
+        return 1;
+    default:
+        return 0;
+    }
 }
 
 /** \ingroup rpmio
@@ -452,7 +482,7 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     const uint8_t *oid = NULL;
     int oidlen = 0;
 	
-    if (pubkey_algo == PGPPUBKEYALGO_ECDSA) {
+    if (pubkey_algo == PGPPUBKEYALGO_ECDSA || is_gost_algo(pubkey_algo)) {
         int len = (hlen > 1) ? p[0] : 0;
         if (len > 0 && len < hlen) {
             char buf[64];
@@ -468,6 +498,8 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
             }
             p += len + 1;
         }
+        if (pubkey_algo != PGPPUBKEYALGO_ECDSA)
+            is_gost = 1;
     }
 
     pgpDigAlg sigalg = pgpSignatureNew(pubkey_algo);
