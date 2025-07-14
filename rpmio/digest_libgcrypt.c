@@ -8,9 +8,47 @@
 #include <rpm/rpmlog.h>
 #include "debug.h"
 
-static int is_gost_curve(const char *oid)
+static int is_gost_curve_oid(const char *oid)
 {
-    return oid && strcmp(oid, "1.2.643.2.2.35.1") == 0;
+    return (oid && strcmp(oid, "1.2.643.2.2.35.1") == 0);
+}
+
+static int pgpVerifySigGOST(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
+                            uint8_t *hash, size_t hashlen, int hash_algo)
+{
+    struct pgpDigKeyDSA_s *key = pgpkey->data;
+    struct pgpDigSigDSA_s *sig = pgpsig->data;
+    gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
+    int rc = 1;
+
+    rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST: ENTER\n");
+
+    if (!sig || !key)
+        return rc;
+
+    if (gcry_sexp_build(&sexp_sig, NULL,
+                        "(sig-val (gost (r %M) (s %M)))",
+                        sig->r, sig->s) ||
+        gcry_sexp_build(&sexp_data, NULL,
+                        "(data (flags raw) (value %b))",
+                        (int)hashlen, (const char *)hash) ||
+        gcry_sexp_build(&sexp_pkey, NULL,
+                        "(public-key (gost (p %M) (q %M) (y %M)))",
+                        key->p, key->q, key->y)) {
+        rpmlog(RPMLOG_ERR, "pgpVerifySigGOST: gcry_sexp_build failed\n");
+        goto exit;
+    }
+
+    if (sexp_sig && sexp_data && sexp_pkey)
+        rc = (gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0) ? 0 : 1;
+
+    rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST: rc=%d\n", rc);
+
+exit:
+    gcry_sexp_release(sexp_sig);
+    gcry_sexp_release(sexp_data);
+    gcry_sexp_release(sexp_pkey);
+    return rc;
 }
 
 /**
@@ -46,20 +84,12 @@ size_t rpmDigestLength(int hashalgo)
 	return 20;
     case RPM_HASH_SHA224:
         return 28;
-    case RPM_HASH_GOST12_256:
-        return 32;
     case RPM_HASH_SHA256:
 	return 32;
     case RPM_HASH_SHA384:
 	return 48;
     case RPM_HASH_SHA512:
         return 64;
-    case RPM_HASH_GOSTR3411_2012_256:
-        return 32;
-    case RPM_HASH_GOSTR3411_2012_512:
-        return 64;
-    case RPM_HASH_GOSTR3411_94:
-        return 32;
     default:
 	return 0;
     }
@@ -79,19 +109,7 @@ static int hashalgo2gcryalgo(int hashalgo)
     case RPM_HASH_SHA384:
 	return GCRY_MD_SHA384;
     case RPM_HASH_SHA512:
-        return GCRY_MD_SHA512;
-    case RPM_HASH_GOST12_256:
-#ifdef GCRY_MD_GOSTR3411_12_256
-        return GCRY_MD_GOSTR3411_12_256;
-#else
-        return GCRY_MD_STRIBOG256;
-#endif
-    case RPM_HASH_GOSTR3411_2012_256:
-        return GCRY_MD_STRIBOG256;
-    case RPM_HASH_GOSTR3411_2012_512:
-        return GCRY_MD_STRIBOG512;
-    case RPM_HASH_GOSTR3411_94:
-        return GCRY_MD_GOSTR3411_CP;
+	return GCRY_MD_SHA512;
     default:
 	return 0;
     }
@@ -178,28 +196,15 @@ static int pgpSetSigMpiRSA(pgpDigAlg pgpsig, int num, const uint8_t *p)
     struct pgpDigSigRSA_s *sig = pgpsig->data;
     int mlen = pgpMpiLen(p);
     int rc = 1;
-    int err;
 
     if (!sig)
-        sig = pgpsig->data = xcalloc(1, sizeof(*sig));
+	sig = pgpsig->data = xcalloc(1, sizeof(*sig));
 
     switch (num) {
     case 0:
-        err = gcry_mpi_scan(&sig->s, GCRYMPI_FMT_PGP, p, mlen, NULL);
-        if (err) {
-            rpmlog(RPMLOG_ERR,
-                   "pgpSetSigMpiRSA: gcry_mpi_scan failed: %s\n",
-                   gcry_strerror(err));
-            goto exit;
-        }
-        rc = 0;
-        break;
-    }
-    return rc;
-exit:
-    if (sig) {
-        gcry_mpi_release(sig->s);
-        pgpsig->data = _free(sig);
+	if (!gcry_mpi_scan(&sig->s, GCRYMPI_FMT_PGP, p, mlen, NULL))
+	    rc = 0;
+	break;
     }
     return rc;
 }
@@ -209,33 +214,19 @@ static int pgpSetKeyMpiRSA(pgpDigAlg pgpkey, int num, const uint8_t *p)
     struct pgpDigKeyRSA_s *key = pgpkey->data;
     int mlen = pgpMpiLen(p);
     int rc = 1;
-    int err;
-
 
     if (!key)
 	key = pgpkey->data = xcalloc(1, sizeof(*key));
 
     switch (num) {
     case 0:
-        err = gcry_mpi_scan(&key->n, GCRYMPI_FMT_PGP, p, mlen, NULL);
-        if (err) {
-            rpmlog(RPMLOG_ERR,
-                   "pgpSetKeyMpiRSA: gcry_mpi_scan failed: %s\n",
-                   gcry_strerror(err));
-            goto exit;
-        }
-        rc = 0;
-        break;
+	if (!gcry_mpi_scan(&key->n, GCRYMPI_FMT_PGP, p, mlen, NULL))
+	    rc = 0;
+	break;
     case 1:
-        err = gcry_mpi_scan(&key->e, GCRYMPI_FMT_PGP, p, mlen, NULL);
-        if (err) {
-            rpmlog(RPMLOG_ERR,
-                   "pgpSetKeyMpiRSA: gcry_mpi_scan failed: %s\n",
-                   gcry_strerror(err));
-            goto exit;
-        }
-        rc = 0;
-        break;
+	if (!gcry_mpi_scan(&key->e, GCRYMPI_FMT_PGP, p, mlen, NULL))
+	    rc = 0;
+	break;
     }
     return rc;
 exit:
@@ -259,15 +250,11 @@ static int pgpVerifySigRSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig, uint8_t *hash, si
 	return rc;
 
     hash_algo_name = gcry_md_algo_name(hashalgo2gcryalgo(hash_algo));
-    if (gcry_sexp_build(&sexp_sig, NULL, "(sig-val (rsa (s %M)))", sig->s) ||
-        gcry_sexp_build(&sexp_data, NULL, "(data (flags pkcs1) (hash %s %b))", hash_algo_name, (int)hashlen, (const char *)hash) ||
-        gcry_sexp_build(&sexp_pkey, NULL, "(public-key (rsa (n %M) (e %M)))", key->n, key->e)) {
-        rpmlog(RPMLOG_ERR, "pgpVerifySigRSA: gcry_sexp_build failed\n");
-        goto exit;
-    }
+    gcry_sexp_build(&sexp_sig, NULL, "(sig-val (rsa (s %M)))", sig->s);
+    gcry_sexp_build(&sexp_data, NULL, "(data (flags pkcs1) (hash %s %b))", hash_algo_name, (int)hashlen, (const char *)hash);
+    gcry_sexp_build(&sexp_pkey, NULL, "(public-key (rsa (n %M) (e %M)))", key->n, key->e);
     if (sexp_sig && sexp_data && sexp_pkey)
-        rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
-exit:
+	rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
     gcry_sexp_release(sexp_sig);
     gcry_sexp_release(sexp_data);
     gcry_sexp_release(sexp_pkey);
@@ -313,43 +300,18 @@ static int pgpSetSigMpiDSA(pgpDigAlg pgpsig, int num, const uint8_t *p)
     struct pgpDigSigDSA_s *sig = pgpsig->data;
     int mlen = pgpMpiLen(p);
     int rc = 1;
-    int err;
-
-    rpmlog(RPMLOG_DEBUG, "pgpSetSigMpiDSA: num=%d mlen=%d\n", num, mlen);
 
     if (!sig)
-        sig = xcalloc(1, sizeof(*sig));
+	sig = pgpsig->data = xcalloc(1, sizeof(*sig));
 
     switch (num) {
-    case 0:
-        err = gcry_mpi_scan(&sig->r, GCRYMPI_FMT_PGP, p, mlen, NULL);
-        if (err) {
-            rpmlog(RPMLOG_ERR,
-                   "pgpSetSigMpiDSA: gcry_mpi_scan failed: %s\n",
-                   gcry_strerror(err));
-            goto exit;
-        }
-        rc = 0;
-        break;
+	if (!gcry_mpi_scan(&sig->r, GCRYMPI_FMT_PGP, p, mlen, NULL))
+	    rc = 0;
+	break;
     case 1:
-        err = gcry_mpi_scan(&sig->s, GCRYMPI_FMT_PGP, p, mlen, NULL);
-        if (err) {
-            rpmlog(RPMLOG_ERR,
-                   "pgpSetSigMpiDSA: gcry_mpi_scan failed: %s\n",
-                   gcry_strerror(err));
-            goto exit;
-        }
-        rc = 0;
-    default:
-        break;
-    }
-    pgpsig->data = sig;
-    return rc;
-exit:
-    if (sig) {
-        gcry_mpi_release(sig->r);
-        gcry_mpi_release(sig->s);
-        pgpsig->data = _free(sig);
+	if (!gcry_mpi_scan(&sig->s, GCRYMPI_FMT_PGP, p, mlen, NULL))
+	    rc = 0;
+	break;
     }
     return rc;
 }
@@ -359,61 +321,27 @@ static int pgpSetKeyMpiDSA(pgpDigAlg pgpkey, int num, const uint8_t *p)
     struct pgpDigKeyDSA_s *key = pgpkey->data;
     int mlen = pgpMpiLen(p);
     int rc = 1;
-    int err;
 
     if (!key)
 	key = pgpkey->data = xcalloc(1, sizeof(*key));
 
     switch (num) {
     case 0:
-        err = gcry_mpi_scan(&key->p, GCRYMPI_FMT_PGP, p, mlen, NULL);
-        if (err) {
-            rpmlog(RPMLOG_ERR,
-                   "pgpSetKeyMpiDSA: gcry_mpi_scan failed: %s\n",
-                   gcry_strerror(err));
-            goto exit;
-        }
-        rc = 0;
-        break;
+	if (!gcry_mpi_scan(&key->p, GCRYMPI_FMT_PGP, p, mlen, NULL))
+	    rc = 0;
+	break;
     case 1:
-        err = gcry_mpi_scan(&key->q, GCRYMPI_FMT_PGP, p, mlen, NULL);
-        if (err) {
-            rpmlog(RPMLOG_ERR,
-                   "pgpSetKeyMpiDSA: gcry_mpi_scan failed: %s\n",
-                   gcry_strerror(err));
-            goto exit;
-        }
-        rc = 0;
-        break;
+	if (!gcry_mpi_scan(&key->q, GCRYMPI_FMT_PGP, p, mlen, NULL))
+	    rc = 0;
+	break;
     case 2:
-        err = gcry_mpi_scan(&key->g, GCRYMPI_FMT_PGP, p, mlen, NULL);
-        if (err) {
-            rpmlog(RPMLOG_ERR,
-                   "pgpSetKeyMpiDSA: gcry_mpi_scan failed: %s\n",
-                   gcry_strerror(err));
-            goto exit;
-        }
-        rc = 0;
-        break;
+	if (!gcry_mpi_scan(&key->g, GCRYMPI_FMT_PGP, p, mlen, NULL))
+	    rc = 0;
+	break;
     case 3:
-        err = gcry_mpi_scan(&key->y, GCRYMPI_FMT_PGP, p, mlen, NULL);
-        if (err) {
-            rpmlog(RPMLOG_ERR,
-                   "pgpSetKeyMpiDSA: gcry_mpi_scan failed: %s\n",
-                   gcry_strerror(err));
-            goto exit;
-        }
-        rc = 0;
-        break;
-    }
-    return rc;
-exit:
-    if (key) {
-        gcry_mpi_release(key->p);
-        gcry_mpi_release(key->q);
-        gcry_mpi_release(key->g);
-        gcry_mpi_release(key->y);
-        pgpkey->data = _free(key);
+	if (!gcry_mpi_scan(&key->y, GCRYMPI_FMT_PGP, p, mlen, NULL))
+	    rc = 0;
+	break;
     }
     return rc;
 }
@@ -434,15 +362,11 @@ static int pgpVerifySigDSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig, uint8_t *hash, si
 	qlen = 20;		/* sanity */
     if (hashlen > qlen)
 	hashlen = qlen;		/* dsa2: truncate hash to qlen */
-    if (gcry_sexp_build(&sexp_sig, NULL, "(sig-val (dsa (r %M) (s %M)))", sig->r, sig->s) ||
-        gcry_sexp_build(&sexp_data, NULL, "(data (flags raw) (value %b))", (int)hashlen, (const char *)hash) ||
-        gcry_sexp_build(&sexp_pkey, NULL, "(public-key (dsa (p %M) (q %M) (g %M) (y %M)))", key->p, key->q, key->g, key->y)) {
-        rpmlog(RPMLOG_ERR, "pgpVerifySigDSA: gcry_sexp_build failed\n");
-        goto exit;
-    }
+    gcry_sexp_build(&sexp_sig, NULL, "(sig-val (dsa (r %M) (s %M)))", sig->r, sig->s);
+    gcry_sexp_build(&sexp_data, NULL, "(data (flags raw) (value %b))", (int)hashlen, (const char *)hash);
+    gcry_sexp_build(&sexp_pkey, NULL, "(public-key (dsa (p %M) (q %M) (g %M) (y %M)))", key->p, key->q, key->g, key->y);
     if (sexp_sig && sexp_data && sexp_pkey)
-        rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
-exit:
+	rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
     gcry_sexp_release(sexp_sig);
     gcry_sexp_release(sexp_data);
     gcry_sexp_release(sexp_pkey);
@@ -471,47 +395,7 @@ static void pgpFreeKeyDSA(pgpDigAlg pgpkey)
     }
 }
 
-static int pgpVerifySigGOST2001(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
-                                uint8_t *hash, size_t hashlen, int hash_algo)
-{
-    struct pgpDigKeyDSA_s *key = pgpkey->data;
-    struct pgpDigSigDSA_s *sig = pgpsig->data;
-    gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
-    int rc = 1;
-
-    if (!sig || !key)
-        return rc;
-
-    if (gcry_sexp_build(&sexp_sig, NULL,
-                        "(sig-val (gost (r %M) (s %M)))", sig->r, sig->s) ||
-        gcry_sexp_build(&sexp_data, NULL,
-                        "(data (flags raw) (value %b))", (int)hashlen, (const char *)hash) ||
-        gcry_sexp_build(&sexp_pkey, NULL,
-                        "(public-key (gost (p %M) (q %M) (y %M)))",
-                        key->p, key->q, key->y)) {
-        rpmlog(RPMLOG_ERR, "pgpVerifySigGOST2001: gcry_sexp_build failed\n");
-        goto exit;
-    }
-    if (sexp_sig && sexp_data && sexp_pkey) {
-        char buf[1024];
-        gcry_sexp_sprint(sexp_sig, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
-        rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST2001: sig %s\n", buf);
-        gcry_sexp_sprint(sexp_data, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
-        rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST2001: data %s\n", buf);
-        gcry_sexp_sprint(sexp_pkey, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
-        rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST2001: pkey %s\n", buf);
-    }
-    if (sexp_sig && sexp_data && sexp_pkey)
-        rc = (gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0) ? 0 : 1;
-	
-    rpmlog(RPMLOG_DEBUG, "pgpVerifySigGOST2001: rc=%d\n", rc);
-
-exit:
-    gcry_sexp_release(sexp_sig);
-    gcry_sexp_release(sexp_data);
-    gcry_sexp_release(sexp_pkey);
-    return rc;
-}
+/****************************** EDDSA **************************************/
 
 struct pgpDigSigEDDSA_s {
     gcry_mpi_t r;
@@ -521,173 +405,6 @@ struct pgpDigSigEDDSA_s {
 struct pgpDigKeyEDDSA_s {
     gcry_mpi_t q;
 };
-
-static int pgpVerifySigGOST2012(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
-                                uint8_t *hash, size_t hashlen, int hash_algo)
-{
-    struct pgpDigKeyEDDSA_s *key = pgpkey->data;
-    struct pgpDigSigDSA_s *sig = pgpsig->data;
-    gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
-    int rc = 1;
-
-    if (!sig || !key)
-        return rc;
-
-    if (gcry_sexp_build(&sexp_sig, NULL,
-                        "(sig-val (ecc (r %M) (s %M)))", sig->r, sig->s) ||
-        gcry_sexp_build(&sexp_data, NULL,
-                        "(data (flags raw) (value %b))", (int)hashlen, (const char *)hash) ||
-        gcry_sexp_build(&sexp_pkey, NULL,
-                        "(public-key (ecc (curve \"GOST2012-256-A\") (q %M)))",
-                        key->q)) {
-        rpmlog(RPMLOG_ERR, "pgpVerifySigGOST2012: gcry_sexp_build failed\n");
-        goto exit;
-    }
-    if (sexp_sig && sexp_data && sexp_pkey)
-        rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
-exit:
-    gcry_sexp_release(sexp_sig);
-    gcry_sexp_release(sexp_data);
-    gcry_sexp_release(sexp_pkey);
-    return rc;
-}
-
-static int pgpVerifySigGOSTEC(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
-                              uint8_t *hash, size_t hashlen, int hash_algo)
-{
-    rpmlog(RPMLOG_DEBUG, "GOSTEC: called pgpVerifySigGOSTEC\n");
-
-    struct pgpDigKeyEDDSA_s *key = pgpkey ? pgpkey->data : NULL;
-    struct pgpDigSigDSA_s *sig = pgpsig ? pgpsig->data : NULL;
-    gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
-    int rc = 1;
-
-    rpmlog(RPMLOG_DEBUG,
-        "GOSTEC: inputs: pgpkey=%p pgpsig=%p hash=%p hashlen=%zu hash_algo=%d\n",
-        pgpkey, pgpsig, hash, hashlen, hash_algo);
-
-    rpmlog(RPMLOG_DEBUG,
-        "GOSTEC: structs: key=%p sig=%p\n", key, sig);
-
-    if (!key || !sig) {
-        rpmlog(RPMLOG_ERR, "GOSTEC: key or sig struct is NULL\n");
-        return rc;
-    }
-
-    rpmlog(RPMLOG_DEBUG,
-        "GOSTEC: key->q=%p sig->r=%p sig->s=%p\n",
-        key->q, sig->r, sig->s);
-
-    if (!key->q || !sig->r || !sig->s) {
-        rpmlog(RPMLOG_ERR, "GOSTEC: q/r/s NULL — cannot verify\n");
-        return rc;
-    }
-
-    if (!hash || hashlen == 0) {
-        rpmlog(RPMLOG_ERR, "GOSTEC: hash buffer is NULL or empty\n");
-        return rc;
-    }
-
-    rpmlog(RPMLOG_DEBUG, "GOSTEC: building S-expressions...\n");
-
-    if (gcry_sexp_build(&sexp_sig, NULL,
-                        "(sig-val (ecc (r %M) (s %M)))",
-                        sig->r, sig->s) ||
-        gcry_sexp_build(&sexp_data, NULL,
-                        "(data (flags raw) (value %b))",
-                        (int)hashlen, (const char *)hash) ||
-        gcry_sexp_build(&sexp_pkey, NULL,
-                        "(public-key (ecc (curve \"GOST2001-CryptoPro-A\") (q %M)))",
-                        key->q)) {
-        rpmlog(RPMLOG_ERR, "GOSTEC: failed to build S-expressions\n");
-        goto exit;
-    }
-
-    if (sexp_sig && sexp_data && sexp_pkey) {
-        rpmlog(RPMLOG_DEBUG, "GOSTEC: calling gcry_pk_verify\n");
-        int verify_rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey);
-        rpmlog(RPMLOG_DEBUG, "GOSTEC: gcry_pk_verify returned %d\n", verify_rc);
-        rc = verify_rc == 0 ? 0 : 1;
-    } else {
-        rpmlog(RPMLOG_ERR, "GOSTEC: One or more sexp are NULL, skipping verify\n");
-    }
-exit:
-    gcry_sexp_release(sexp_sig);
-    gcry_sexp_release(sexp_data);
-    gcry_sexp_release(sexp_pkey);
-
-    rpmlog(RPMLOG_DEBUG, "GOSTEC: final rc=%d\n", rc);
-
-    return rc;
-}
-
-static const char *pgpCurveName(int curve)
-{
-    switch (curve) {
-    case PGPCURVE_NIST_P_256:
-        return "NIST P-256";
-    case PGPCURVE_NIST_P_384:
-        return "NIST P-384";
-    case PGPCURVE_NIST_P_521:
-        return "NIST P-521";
-    case PGPCURVE_BRAINPOOL_P256R1:
-        return "brainpoolP256r1";
-    case PGPCURVE_BRAINPOOL_P512R1:
-        return "brainpoolP512r1";
-    case PGPCURVE_ED25519:
-        return "Ed25519";
-    case PGPCURVE_CURVE25519:
-        return "Curve25519";
-    default:
-        return NULL;
-    }
-}
-
-static int pgpVerifySigECDSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
-                             uint8_t *hash, size_t hashlen, int hash_algo)
-{
-    struct pgpDigKeyEDDSA_s *key = pgpkey->data;
-    struct pgpDigSigDSA_s *sig = pgpsig->data;
-    gcry_sexp_t sexp_sig = NULL, sexp_data = NULL, sexp_pkey = NULL;
-    const char *curve_name = pgpCurveName(pgpkey->curve);
-    const char *hash_algo_name;
-    int rc = 1;
-
-    if (!sig || !key || !curve_name)
-        return rc;
-
-    hash_algo_name = gcry_md_algo_name(hashalgo2gcryalgo(hash_algo));
-    if (gcry_sexp_build(&sexp_sig, NULL,
-                        "(sig-val (ecdsa (r %M) (s %M)))", sig->r, sig->s) ||
-        gcry_sexp_build(&sexp_data, NULL,
-                        "(data (flags raw) (hash %s %b))", hash_algo_name,
-                        (int)hashlen, (const char *)hash) ||
-        gcry_sexp_build(&sexp_pkey, NULL,
-                        "(public-key (ecc (curve \"%s\") (q %M)))",
-                        curve_name, key->q)) {
-        rpmlog(RPMLOG_ERR, "pgpVerifySigECDSA: gcry_sexp_build failed\n");
-        goto exit;
-    }
-    if (sexp_sig && sexp_data && sexp_pkey) {
-        char buf[1024];
-        gcry_sexp_sprint(sexp_sig, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
-        rpmlog(RPMLOG_DEBUG, "pgpVerifySigECDSA: sig %s\n", buf);
-        gcry_sexp_sprint(sexp_data, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
-        rpmlog(RPMLOG_DEBUG, "pgpVerifySigECDSA: data %s\n", buf);
-        gcry_sexp_sprint(sexp_pkey, GCRYSEXP_FMT_CANON, buf, sizeof(buf));
-        rpmlog(RPMLOG_DEBUG, "pgpVerifySigECDSA: pkey %s\n", buf);
-        rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
-    }
-    rpmlog(RPMLOG_DEBUG, "pgpVerifySigECDSA: rc=%d\n", rc);
-exit:
-    gcry_sexp_release(sexp_sig);
-    gcry_sexp_release(sexp_data);
-    gcry_sexp_release(sexp_pkey);
-    return rc;
-}
-
-
-
 /****************************** EDDSA **************************************/
 
 static int pgpSetSigMpiEDDSA(pgpDigAlg pgpsig, int num, const uint8_t *p)
@@ -697,38 +414,19 @@ static int pgpSetSigMpiEDDSA(pgpDigAlg pgpsig, int num, const uint8_t *p)
     int rc = 1;
 
     if (!sig)
-        sig = pgpsig->data = xcalloc(1, sizeof(*sig));
+	sig = pgpsig->data = xcalloc(1, sizeof(*sig));
 
     switch (num) {
     case 0:
-        rc = gcry_mpi_scan(&sig->r, GCRYMPI_FMT_PGP, p, mlen, NULL);
-        if (rc) {
-            rpmlog(RPMLOG_ERR,
-                   "pgpSetSigMpiEDDSA: gcry_mpi_scan failed: %s\n",
-                   gcry_strerror(rc));
-            goto exit;
-        }
-        rc = 0;
-        break;
+	if (!gcry_mpi_scan(&sig->r, GCRYMPI_FMT_PGP, p, mlen, NULL))
+	    rc = 0;
+	break;
     case 1:
-        rc = gcry_mpi_scan(&sig->s, GCRYMPI_FMT_PGP, p, mlen, NULL);
-        if (rc) {
-            rpmlog(RPMLOG_ERR,
-                   "pgpSetSigMpiEDDSA: gcry_mpi_scan failed: %s\n",
-                   gcry_strerror(rc));
-            goto exit;
-        }
-        rc = 0;
-        break;
+	if (!gcry_mpi_scan(&sig->s, GCRYMPI_FMT_PGP, p, mlen, NULL))
+	    rc = 0;
+	break;
     }
     return rc;
-exit:
-    if (sig) {
-        gcry_mpi_release(sig->r);
-        gcry_mpi_release(sig->s);
-        pgpsig->data = _free(sig);
-    }
-    return 1;
 }
 
 static int pgpSetKeyMpiEDDSA(pgpDigAlg pgpkey, int num, const uint8_t *p)
@@ -738,27 +436,15 @@ static int pgpSetKeyMpiEDDSA(pgpDigAlg pgpkey, int num, const uint8_t *p)
     int rc = 1;
 
     if (!key)
-        key = pgpkey->data = xcalloc(1, sizeof(*key));
+	key = pgpkey->data = xcalloc(1, sizeof(*key));
 
     switch (num) {
     case 0:
-        rc = gcry_mpi_scan(&key->q, GCRYMPI_FMT_PGP, p, mlen, NULL);
-        if (rc) {
-            rpmlog(RPMLOG_ERR,
-                   "pgpSetKeyMpiEDDSA: gcry_mpi_scan failed: %s\n",
-                   gcry_strerror(rc));
-            goto exit;
-        }
-        rc = 0;
-        break;
+	if (!gcry_mpi_scan(&key->q, GCRYMPI_FMT_PGP, p, mlen, NULL))
+	    rc = 0;
+	break;
     }
     return rc;
-exit:
-    if (key) {
-        gcry_mpi_release(key->q);
-        pgpkey->data = _free(key);
-    }
-    return 1;
 }
 
 static int
@@ -787,16 +473,12 @@ static int pgpVerifySigEDDSA(pgpDigAlg pgpkey, pgpDigAlg pgpsig, uint8_t *hash, 
     if (pgpkey->curve != PGPCURVE_ED25519)
 	return rc;
     if (ed25519_zero_extend(sig->r, buf_r, 32) || ed25519_zero_extend(sig->s, buf_s, 32))
-        return rc;
-    if (gcry_sexp_build(&sexp_sig, NULL, "(sig-val (eddsa (r %b) (s %b)))", 32, (const char *)buf_r, 32, (const char *)buf_s, 32) ||
-        gcry_sexp_build(&sexp_data, NULL, "(data (flags eddsa) (hash-algo sha512) (value %b))", (int)hashlen, (const char *)hash) ||
-        gcry_sexp_build(&sexp_pkey, NULL, "(public-key (ecc (curve \"Ed25519\") (flags eddsa) (q %M)))", key->q)) {
-        rpmlog(RPMLOG_ERR, "pgpVerifySigEDDSA: gcry_sexp_build failed\n");
-        goto exit;
-    }
+	return rc;
+    gcry_sexp_build(&sexp_sig, NULL, "(sig-val (eddsa (r %b) (s %b)))", 32, (const char *)buf_r, 32, (const char *)buf_s, 32);
+    gcry_sexp_build(&sexp_data, NULL, "(data (flags eddsa) (hash-algo sha512) (value %b))", (int)hashlen, (const char *)hash);
+    gcry_sexp_build(&sexp_pkey, NULL, "(public-key (ecc (curve \"Ed25519\") (flags eddsa) (q %M)))", key->q);
     if (sexp_sig && sexp_data && sexp_pkey)
-        rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
-exit:
+	rc = gcry_pk_verify(sexp_sig, sexp_data, sexp_pkey) == 0 ? 0 : 1;
     gcry_sexp_release(sexp_sig);
     gcry_sexp_release(sexp_data);
     gcry_sexp_release(sexp_pkey);
@@ -840,29 +522,22 @@ static int pgpSupportedCurve(int curve)
 {
     if (curve == PGPCURVE_ED25519) {
 	static int supported_ed25519;
-        if (!supported_ed25519) {
-            gcry_sexp_t sexp = NULL;
-            unsigned int nbits;
-            if (gcry_sexp_build(&sexp, NULL,
-                                "(public-key (ecc (curve \"Ed25519\")))")) {
-                rpmlog(RPMLOG_ERR,
-                       "pgpSupportedCurve: gcry_sexp_build failed\n");
-                return 0;
-            }
-            nbits = gcry_pk_get_nbits(sexp);
-            gcry_sexp_release(sexp);
-            supported_ed25519 = nbits > 0 ? 1 : -1;
-        }
+	if (!supported_ed25519) {
+	    gcry_sexp_t sexp = NULL;
+	    unsigned int nbits;
+	    gcry_sexp_build(&sexp, NULL, "(public-key (ecc (curve \"Ed25519\")))");
+	    nbits = gcry_pk_get_nbits(sexp);
+	    gcry_sexp_release(sexp);
+	    supported_ed25519 = nbits > 0 ? 1 : -1;
+	}
 	return supported_ed25519 > 0;
     }
     return 0;
 }
 
-pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
+pgpDigAlg pgpPubkeyNew(int algo, int curve)
 {
     pgpDigAlg ka = xcalloc(1, sizeof(*ka));;
-    ka->curve = curve;
-    ka->is_gost = is_gost_curve(oid);
 
     switch (algo) {
     case PGPPUBKEYALGO_RSA:
@@ -871,32 +546,9 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
         ka->mpis = 2;
         break;
     case PGPPUBKEYALGO_DSA:
-    case PGPPUBKEYALGO_GOST3410_2001_A:
-    case PGPPUBKEYALGO_GOST3410_2001_B:
-    case PGPPUBKEYALGO_GOST3410_2001_C:
-    case PGPPUBKEYALGO_GOST3410_2001_XCHA:
         ka->setmpi = pgpSetKeyMpiDSA;
         ka->free = pgpFreeKeyDSA;
         ka->mpis = 4;
-        break;
-    case PGPPUBKEYALGO_ECDSA:
-        ka->setmpi = pgpSetKeyMpiEDDSA;
-        ka->free   = pgpFreeKeyEDDSA;
-        ka->mpis   = 1;
-        ka->curve = curve;
-        break;
-#if PGPPUBKEYALGO_GOST3410_2001 != PGPPUBKEYALGO_ECDSA
-    case PGPPUBKEYALGO_GOST3410_2001:
-        /* GOST R 34.10-2001 обрабатывается через DSA-механизм (4 MPI: p, q, g, y) */
-        ka->setmpi = pgpSetKeyMpiDSA;
-        ka->free   = pgpFreeKeyDSA;
-        ka->mpis   = 4;
-        break;
-#endif
-    case PGPPUBKEYALGO_GOST3410_2012_256:
-        ka->setmpi = pgpSetKeyMpiEDDSA;
-        ka->free = pgpFreeKeyEDDSA;
-        ka->mpis = 1;
         break;
     case PGPPUBKEYALGO_EDDSA:
 	if (!pgpSupportedCurve(curve)) {
@@ -916,51 +568,13 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve, const char *oid)
     }
 
     ka->verify = pgpVerifyNULL; /* keys can't be verified */
-    if (ka->is_gost && algo == PGPPUBKEYALGO_ECDSA) {
-        ka->setmpi = pgpSetKeyMpiEDDSA;
-        ka->verify = pgpVerifySigGOSTEC;
-        ka->mpis = 1;
-    }
-    rpmlog(RPMLOG_DEBUG,
-           "pgpPubkeyNew: algo=%d curve_oid=%s is_gost=%d mpis=%d setmpi=%p free=%p\n",
-           algo, oid ? oid : "", ka->is_gost,
-           ka->mpis, ka->setmpi, ka->free);
+
     return ka;
 }
 
-pgpDigAlg pgpSignatureNew(int algo, int is_gost)
+pgpDigAlg pgpSignatureNew(int algo)
 {
     pgpDigAlg sa = xcalloc(1, sizeof(*sa));
-    sa->is_gost = is_gost;
-
-    /*
-     * Явная поддержка ECDSA, чтобы не попадать в дефолт
-     * и не использовать неверные или NULL-указатели.
-     */
-    if (algo == PGPPUBKEYALGO_ECDSA) {
-        if (is_gost) {
-            /* ECDSA на GOST-кривой → GOST-EC verify */
-            sa->setmpi = pgpSetSigMpiDSA;
-            sa->free   = pgpFreeSigDSA;
-            sa->verify = pgpVerifySigGOSTEC;
-            sa->mpis   = 2;
-        }
-        else {
-            /* Обычное ECDSA-verify */
-            sa->setmpi = pgpSetSigMpiDSA;
-            sa->free   = pgpFreeSigDSA;
-            sa->verify = pgpVerifySigECDSA;
-            sa->mpis   = 2;
-        }
-        return sa;
-    }
-	
-    if (sa->is_gost && algo == PGPPUBKEYALGO_ECDSA) {
-        rpmlog(RPMLOG_DEBUG,
-               "pgpSignatureNew: using GOST verification for ECDSA algo\n");
-
-    }
-
 
     switch (algo) {
     case PGPPUBKEYALGO_RSA:
@@ -970,36 +584,9 @@ pgpDigAlg pgpSignatureNew(int algo, int is_gost)
         sa->mpis = 1;
         break;
     case PGPPUBKEYALGO_DSA:
-    case PGPPUBKEYALGO_GOST3410_2001_A:
-    case PGPPUBKEYALGO_GOST3410_2001_B:
-    case PGPPUBKEYALGO_GOST3410_2001_C:
-    case PGPPUBKEYALGO_GOST3410_2001_XCHA:
         sa->setmpi = pgpSetSigMpiDSA;
         sa->free = pgpFreeSigDSA;
         sa->verify = pgpVerifySigDSA;
-        sa->mpis = 2;
-        break;
-#if PGPPUBKEYALGO_GOST3410_2001 != PGPPUBKEYALGO_ECDSA
-    case PGPPUBKEYALGO_GOST3410_2001:
-        sa->setmpi = pgpSetSigMpiDSA;
-        sa->free = pgpFreeSigDSA;
-        sa->verify = pgpVerifySigGOST2001;
-        sa->mpis = 2;
-        break;
-#endif
-    case PGPPUBKEYALGO_ECDSA:
-        if (is_gost)
-            rpmlog(RPMLOG_DEBUG,
-                   "pgpSignatureNew: using GOST verification for ECDSA algo\n");
-        sa->setmpi = pgpSetSigMpiDSA;
-        sa->free = pgpFreeSigDSA;
-        sa->verify = is_gost ? pgpVerifySigGOSTEC : pgpVerifySigECDSA;
-        sa->mpis = 2;
-        break;
-    case PGPPUBKEYALGO_GOST3410_2012_256:
-        sa->setmpi = pgpSetSigMpiDSA;
-        sa->free = pgpFreeSigDSA;
-        sa->verify = pgpVerifySigGOST2012;
         sa->mpis = 2;
         break;
     case PGPPUBKEYALGO_EDDSA:
@@ -1015,7 +602,5 @@ pgpDigAlg pgpSignatureNew(int algo, int is_gost)
         break;
     }
 
-    rpmlog(RPMLOG_DEBUG, "pgpSignatureNew: algo=%d is_gost=%d verify=%p\n",
-           algo, is_gost, sa->verify);
     return sa;
 }
