@@ -19,6 +19,11 @@
 
 static int _print = 0;
 
+/* Verification function implemented in digest_libgcrypt.c */
+int pgpVerifySigGOST(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
+                     uint8_t *hash, size_t hashlen, int hash_algo);
+
+/* Convert an ASN.1 OID to a textual dotted representation */
 static const char *oid2str(const uint8_t *oid, int len,
                            char *buf, size_t buflen)
 {
@@ -41,6 +46,7 @@ static const char *oid2str(const uint8_t *oid, int len,
     return buf;
 }
 
+/* Check if OID denotes a GOST curve */
 static int is_gost_oid(const char *oid)
 {
     return (oid && strcmp(oid, "1.2.643.2.2.35.1") == 0);
@@ -446,13 +452,14 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     int oidlen = 0;
 	
     if (pubkey_algo == PGPPUBKEYALGO_ECDSA) {
-
         int len = (hlen > 1) ? p[0] : 0;
         if (len > 0 && len < hlen) {
             char buf[64];
             oid = p + 1;
             oidlen = len;
             const char *oidstr = oid2str(oid, len, buf, sizeof(buf));
+            rpmlog(RPMLOG_DEBUG, "pgpPrtSigParams: OID %s\n",
+                   oidstr ? oidstr : "");
             if (is_gost_oid(oidstr)) {
                 rpmlog(RPMLOG_DEBUG,
                        "pgpPrtSigParams: detected GOST OID %s\n", oidstr);
@@ -463,20 +470,25 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     }
 
     pgpDigAlg sigalg = pgpSignatureNew(pubkey_algo);
-    if (is_gost)
+    if (is_gost) {
+        rpmlog(RPMLOG_DEBUG, "pgpPrtSigParams: using GOST verification\n");
         sigalg->verify = pgpVerifySigGOST;
-
+    }
+	
     if (is_gost && pend - p >= 2) {
-	    size_t mpilen = pgpMpiLen(p);
+        size_t mpilen = pgpMpiLen(p);
         if (mpilen > 2 && (p + mpilen) < pend &&
             (int)(mpilen - 2) == oidlen &&
             (oidlen == 0 || !memcmp(p + 2, oid, oidlen))) {
-            p += mpilen; /* skip OID MPI */
+            rpmlog(RPMLOG_DEBUG, "pgpPrtSigParams: skipping OID MPI\n");
+            p += mpilen;
         }
     }
 
     int rc = processMpis(sigalg->mpis, sigalg, p, pend);
-
+    rpmlog(RPMLOG_DEBUG, "pgpPrtSigParams: processMpis rc=%d\n", rc);
+	
+    /* We can't handle more than one sig at a time */
     if (rc == 0 && sigp->alg == NULL && sigp->tag == PGPTAG_SIGNATURE)
         sigp->alg = sigalg;
     else
@@ -592,8 +604,7 @@ static int pgpPrtSig(pgpTag tag, const uint8_t *h, size_t hlen,
 	    _digp->hash_algo = v->hash_algo;
 	    memcpy(_digp->signhash16, p, sizeof(_digp->signhash16));
 	}
-
-    }
+     
 	p += 2;
 	if (p > hend)
 	    return 1;
@@ -1198,7 +1209,10 @@ rpmRC pgpVerifySignature(pgpDigParams key, pgpDigParams sig, DIGEST_CTX hashctx)
     rpmRC res = RPMRC_FAIL; /* assume failure */
 
     if (sig == NULL || ctx == NULL)
-        goto exit;	
+	goto exit;
+
+    if (sig->tag != PGPTAG_SIGNATURE)
+	goto exit;
 
     if (sig->hash != NULL)
 	rpmDigestUpdate(ctx, sig->hash, sig->hashlen);
