@@ -23,7 +23,9 @@ pgpDigAlg pgpPubkeyNew(int algo, int curve);
 
 pgpDigAlg pgpSignatureNew(int algo);
 
-pgpDigAlg pgpDigAlgFree(pgpDigAlg alg);
+int pgpVerifySigGOST(pgpDigAlg pgpkey, pgpDigAlg pgpsig,
+                     uint8_t *hash, size_t hashlen, int hash_algo);
+
 
 
 
