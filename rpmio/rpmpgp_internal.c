@@ -78,6 +78,7 @@ struct pgpDigParams_s {
 #define	PGPDIG_SIG_HAS_KEY_FLAGS	(1 << 3)
 
     pgpDigAlg alg;
+    uint8_t is_gost;
 };
 
 static void pgpPrtNL(void)
@@ -473,6 +474,7 @@ static int pgpPrtSigParams(pgpTag tag, uint8_t pubkey_algo,
     if (is_gost) {
         rpmlog(RPMLOG_DEBUG, "pgpPrtSigParams: using GOST verification\n");
         sigalg->verify = pgpVerifySigGOST;
+        sigp->is_gost = 1;
     }
 	
     if (is_gost && pend - p >= 2) {
@@ -666,6 +668,16 @@ static int pgpPrtPubkeyParams(uint8_t pubkey_algo,
 	p += len + 1;
     }
     pgpDigAlg keyalg = pgpPubkeyNew(pubkey_algo, curve);
+    switch (pubkey_algo) {
+    case PGPPUBKEYALGO_GOST3410_2012_256:
+    case PGPPUBKEYALGO_GOST3410_2001_A:
+    case PGPPUBKEYALGO_GOST3410_2001_B:
+    case PGPPUBKEYALGO_GOST3410_2001_C:
+    case PGPPUBKEYALGO_GOST3410_2001_XCHA:
+    case PGPPUBKEYALGO_GOST3410_2001_XCHB:
+        keyp->is_gost = 1;
+        break;
+    }
     rc = processMpis(keyalg->mpis, keyalg, p, pend);
     if (rc == 0) {
 	keyp->pubkey_algo = pubkey_algo;
@@ -962,13 +974,13 @@ uint32_t pgpDigParamsCreationTime(pgpDigParams digp)
 
 int pgpDigParamsIsGost(pgpDigParams digp)
 {
-    return 0;
+    return digp ? digp->is_gost : 0;
 }
 
 void pgpDigParamsSetIsGost(pgpDigParams digp, int is_gost)
 {
-    (void)digp;
-    (void)is_gost;
+    if (digp)
+        digp->is_gost = is_gost ? 1 : 0;
 }
 
 
